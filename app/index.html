@@ -25,12 +25,29 @@ canvas{position:fixed;inset:0;width:100%;height:100%}
 .row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:6px 0}
 .dim{color:#9d93c8;font-size:13px;margin-top:10px}
 kbd{background:#28135a;border:1px solid #846cff;border-radius:3px;padding:0 5px;color:#fff}
+button:focus-visible{outline:2px dashed #52f5ff;outline-offset:3px}
+.coin{color:#ffd94a!important}
+.shop-open{border-color:#ffd94a!important;color:#fff3ad!important}
+dialog{width:min(920px,calc(100vw - 24px));max-height:90dvh;padding:0;border:1px solid #52f5ff;background:#100a2b;color:#fff;box-shadow:0 0 54px #3b2a86;overflow:hidden}
+dialog::backdrop{background:#060313f5}
+dialog button{background:#28135a;color:#fff;border:1px solid #846cff;cursor:pointer;font-size:14px}dialog button:hover:not(:disabled){background:#3c1f7e}dialog button:disabled{color:#8f87ad;background:#171129}
+.shop-shell{display:grid;grid-template-rows:auto minmax(0,1fr) auto;max-height:90dvh}
+.shop-head,.shop-foot{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 20px;background:#17103a}
+.shop-head{border-bottom:1px solid #34296a}.shop-head h1{margin:0;color:#52f5ff;font-size:25px}.shop-balance{font-weight:bold;white-space:nowrap}.shop-balance b{color:#ffd94a;font-size:22px}
+.shop-close{min-width:44px;min-height:44px;margin:0!important;padding:8px!important;font-size:22px!important}
+.shop-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;padding:16px 20px;overflow:auto;overscroll-behavior:contain}
+.shop-item{display:grid;grid-template-rows:112px auto auto 44px;gap:6px;align-items:center;padding:12px;background:#0b0822;border:1px solid #34296a;text-align:center}
+.shop-item.equipped{border-color:#ffd94a;box-shadow:inset 0 0 18px #ffd94a18}.shop-item canvas{position:static;inset:auto;width:100%;height:112px;display:block;background:#08051b}.shop-item h2{margin:0;font-size:16px;color:#fff}.shop-price{min-height:20px;color:#ffd94a;font-size:13px}.shop-item button{min-height:44px;margin:0;padding:8px 10px}.shop-item button:disabled{cursor:not-allowed;opacity:.55}
+.shop-foot{border-top:1px solid #34296a;flex-wrap:wrap}.shop-status{flex:1;min-width:220px;text-align:start;color:#bdb4e5}.shop-status.error{color:#ff9aae}.unequip{min-height:44px;margin:0!important}
+@media(max-width:560px){.shop-head,.shop-foot,.shop-grid{padding:12px}.shop-grid{grid-template-columns:1fr 1fr}.shop-item{padding:8px}.shop-status{order:2;min-width:100%}}
+@media(prefers-reduced-motion:no-preference){dialog[open]{animation:shop-in .24s ease-out}.shop-item{transition:transform .18s ease-out,border-color .18s ease-out}.shop-item:hover{transform:translateY(-2px)}@keyframes shop-in{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}}
 </style>
 <canvas id="c"></canvas>
 <div class="hud">
   <div>NEON RUN<br><small>关卡：<b id="lv">1</b></small><div class="best">纪录 <b id="best">0</b></div></div>
   <div style="text-align:right">
     <div>速度 <b id="sp">1.0x</b>　分数 <b id="sc">0</b></div>
+    <div>金币 <b id="coinHud" class="coin">0</b></div>
     <div class="cbox" id="comboBox"></div>
     <button id="pause" class="btn">Ⅱ 暂停</button>
   </div>
@@ -39,6 +56,7 @@ kbd{background:#28135a;border:1px solid #846cff;border-radius:3px;padding:0 5px;
   <div class="box">
     <h1>霓虹跑酷</h1>
     <p id="info">第一关 · 悠闲节奏</p>
+    <div class="row"><button id="menuShopBtn" class="shop-open">装扮商店 · <span class="coin">0</span> 金币</button></div>
     <div class="row">
       <button data-l="1">第一关<br><small>最高 2x</small></button>
       <button data-l="2">第二关<br><small>1万分解锁 · 最高 6x</small></button>
@@ -69,14 +87,29 @@ kbd{background:#28135a;border:1px solid #846cff;border-radius:3px;padding:0 5px;
   <div class="box">
     <h1 id="endTitle">撞上了</h1>
     <p>本次得分 <b id="final" style="color:#52f5ff;font-size:28px">0</b></p>
+    <p>本局金币 <b id="runCoins" class="coin">+0</b>　余额 <b id="endCoins" class="coin">0</b></p>
     <p id="newBest" class="star" style="display:none;font-weight:bold">★ 新纪录！★</p>
     <p id="prevBestP" class="dim">纪录 <b id="prevBest" style="color:#8fa3ff">0</b></p>
     <div class="row">
       <button onclick="restart()"><kbd>R</kbd> 再来一局</button>
+      <button id="endShopBtn" class="shop-open">装扮商店</button>
       <button onclick="menu()">返回选关</button>
     </div>
   </div>
 </div>
+<dialog id="shopDialog" aria-labelledby="shopTitle">
+  <div class="shop-shell">
+    <header class="shop-head">
+      <div><h1 id="shopTitle" tabindex="-1">霓虹装扮商店</h1><small>收集能量球赚金币，装扮不会改变碰撞范围</small></div>
+      <div class="shop-balance">余额 <b id="shopCoins">0</b> <button id="shopCloseBtn" class="shop-close" aria-label="关闭商店">×</button></div>
+    </header>
+    <div id="shopGrid" class="shop-grid"></div>
+    <footer class="shop-foot">
+      <button id="unequipBtn" class="unequip">卸下装扮</button>
+      <div id="shopStatus" class="shop-status" role="status" aria-live="polite">选择一款装扮查看购买状态</div>
+    </footer>
+  </div>
+</dialog>
 <script>
 (function () {
 const c = document.querySelector('#c');
@@ -89,9 +122,31 @@ const spEl = document.querySelector('#sp');
 const scEl = document.querySelector('#sc');
 const bestEl = document.querySelector('#best');
 const comboBox = document.querySelector('#comboBox');
+const coinHud = document.querySelector('#coinHud');
+const shopDialog = document.querySelector('#shopDialog');
+const shopGrid = document.querySelector('#shopGrid');
+const shopCoins = document.querySelector('#shopCoins');
+const shopStatus = document.querySelector('#shopStatus');
+const menuShopBtn = document.querySelector('#menuShopBtn');
+const endShopBtn = document.querySelector('#endShopBtn');
 
 // ===== 常量 / 状态 =====
 const LEVEL_UNLOCK = [0, 0, 10000, 25000];
+const SHOP_KEY = 'neon_shop_v1';
+const GEM_COIN = [1, 2, 3];
+const COSTUMES = [
+  { id: 'goggles', name: '疾风护目镜', price: 60 },
+  { id: 'cat_ears', name: '霓虹猫耳', price: 120 },
+  { id: 'headphones', name: '节拍耳机', price: 220 },
+  { id: 'scarf', name: '流光围巾', price: 360 },
+  { id: 'backpack', name: '像素背包', price: 520 },
+  { id: 'cape', name: '暗夜披风', price: 720 },
+  { id: 'crown', name: '电光皇冠', price: 950 },
+  { id: 'wings', name: '光翼协议', price: 1200 },
+  { id: 'helmet', name: '星航头盔', price: 1500 },
+  { id: 'dragon', name: '龙焰幻影', price: 1800 }
+];
+const COSTUME_IDS = new Set(COSTUMES.map(item => item.id));
 // 封顶速度(基础6) 第3关90(15x)而非120：高速下仍需可反应时间(屏宽0.77W/90≈0.13s@1000px)
 const MAX_SPEED = [0, 12, 36, 90];
 // 物理（帧单位 16ms）。手感经模拟调校：
@@ -107,16 +162,57 @@ const DOG_MIN_CHASE = 210;      // 追击中允许贴近的最小距离（制造
 const DOG_WINDUP = 34;          // 扑咬预警时长(帧≈0.55s)
 const DOG_BITE_H = 48;          // 玩家脚离地<此高度且狗到位置 => 被咬
 const DOG_CD_MIN = [0, 420, 340, 260];  // 两次扑咬最小间隔(帧)，随关卡缩短
+// 角色配色：为何意(左→右)=绿，邱家杨(右→左)=粉（对应两张火柴人参考图）
+const C_GREEN = '#9be564';
+const C_PINK = '#ff5fa8';
+function runnerColor() { return side === 1 ? C_GREEN : C_PINK; }
 let W, H, run = 0, paused = 0, side = 1, level = 1;
 let score = 0, best = 0, speed, wait, obs = [], gems = [], parts = [], floats = [], ghost = [];
 let py = 0, pvy = 0, jumpCount = 0, holdJump = 0;
 let combo = 0, comboMax = 0, last, gameT = 0, flash = 0, dying = 0, dieT = 0;
+let runCoins = 0, shopState, shopStorageOK = true, shopOpener = null;
 // 狗状态
 let dog = null;
 
 function loadBest() { try { best = +(localStorage.getItem('neon_best') || 0); } catch (e) { best = 0; } }
 function saveBest() { try { localStorage.setItem('neon_best', best); } catch (e) {} }
+function normalizeShopState(raw) {
+  const coins = Number.isSafeInteger(raw && raw.coins) && raw.coins >= 0 ? raw.coins : 0;
+  const owned = Array.isArray(raw && raw.owned) ? [...new Set(raw.owned.filter(id => COSTUME_IDS.has(id)))] : [];
+  const equipped = raw && owned.includes(raw.equipped) ? raw.equipped : null;
+  return { coins, owned, equipped };
+}
+function saveShopState(next = shopState) {
+  try {
+    localStorage.setItem(SHOP_KEY, JSON.stringify(next));
+    shopStorageOK = true;
+    return true;
+  } catch (e) {
+    shopStorageOK = false;
+    return false;
+  }
+}
+function loadShopState() {
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem(SHOP_KEY) || 'null'); }
+  catch (e) { shopStorageOK = false; }
+  shopState = normalizeShopState(raw);
+  if (!saveShopState(shopState)) shopStorageOK = false;
+}
+function updateCoinUI() {
+  coinHud.textContent = shopState.coins;
+  shopCoins.textContent = shopState.coins;
+  menuShopBtn.querySelector('.coin').textContent = shopState.coins;
+  document.querySelector('#endCoins').textContent = shopState.coins;
+}
+function setShopMessage(message, error = false) {
+  shopStatus.textContent = message;
+  shopStatus.classList.toggle('error', error);
+  shopStatus.setAttribute('role', error ? 'alert' : 'status');
+}
 loadBest();
+loadShopState();
+updateCoinUI();
 
 function size() {
   W = innerWidth; H = innerHeight;
@@ -131,6 +227,7 @@ function gy() { return H * GY_RATIO; }
 
 // ===== 输入 =====
 addEventListener('keydown', e => {
+  if (shopDialog.open) return;
   if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
     e.preventDefault();
     if (e.repeat) return;
@@ -146,7 +243,7 @@ addEventListener('keyup', e => {
   if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') jumpEnd();
 });
 addEventListener('pointerdown', e => {
-  if (run && !paused) jumpStart();
+  if (!shopDialog.open && run && !paused) jumpStart();
 });
 
 // ===== 跳跃 =====
@@ -158,7 +255,7 @@ function jumpStart() {
     holdJump = 1;
     jumpHoldFrames = 0;
     pvy = jumpCount === 1 ? JV1 : JV2;
-    const col = jumpCount === 1 ? '#52f5ff' : '#ffd94a';
+    const col = jumpCount === 1 ? runnerColor() : '#ffd94a';
     spawnBurst(px(), gy() - 8, col, 10, 2.6);
     if (jumpCount === 2) spawnRing(px(), gy() - 8, '#ffd94a');
   }
@@ -174,6 +271,89 @@ function spawnBurst(xx, yy, color, n, sp) {
 }
 function spawnRing(xx, yy, color) { parts.push({ xx, yy, ring: 1, life: 0.42, color }); }
 function addFloat(xx, yy, txt, color, life) { floats.push({ xx, yy, txt, color, life }); }
+
+// ===== 装扮商店 =====
+function findCostume(id) { return COSTUMES.find(item => item.id === id); }
+function purchaseCostume(id) {
+  const item = findCostume(id);
+  if (!item || shopState.owned.includes(id)) return;
+  if (!shopStorageOK) { setShopMessage('存档不可用，暂时无法购买', true); return; }
+  if (shopState.coins < item.price) {
+    setShopMessage('还差 ' + (item.price - shopState.coins) + ' 金币才能购买「' + item.name + '」');
+    return;
+  }
+  const next = { coins: shopState.coins - item.price, owned: [...shopState.owned, id], equipped: id };
+  if (!saveShopState(next)) { setShopMessage('购买未保存，请检查本地存储后重试', true); return; }
+  shopState = next;
+  updateCoinUI();
+  renderShop();
+  setShopMessage('已购买并装备「' + item.name + '」');
+}
+function equipCostume(id) {
+  const item = findCostume(id);
+  if (!item || !shopState.owned.includes(id) || shopState.equipped === id) return;
+  const next = { coins: shopState.coins, owned: [...shopState.owned], equipped: id };
+  if (!saveShopState(next)) { setShopMessage('装备状态未保存，请重试', true); return; }
+  shopState = next;
+  renderShop();
+  setShopMessage('已装备「' + item.name + '」');
+}
+function unequipCostume() {
+  if (!shopState.equipped) { setShopMessage('当前已经是默认造型'); return; }
+  const next = { coins: shopState.coins, owned: [...shopState.owned], equipped: null };
+  if (!saveShopState(next)) { setShopMessage('卸下状态未保存，请重试', true); return; }
+  shopState = next;
+  renderShop();
+  setShopMessage('已恢复默认造型');
+}
+function renderShop() {
+  shopGrid.textContent = '';
+  for (const item of COSTUMES) {
+    const owned = shopState.owned.includes(item.id);
+    const equipped = shopState.equipped === item.id;
+    const card = document.createElement('article');
+    card.className = 'shop-item' + (equipped ? ' equipped' : '');
+    const preview = document.createElement('canvas');
+    preview.setAttribute('aria-label', item.name + '角色预览');
+    const title = document.createElement('h2');
+    title.textContent = item.name;
+    const price = document.createElement('div');
+    price.className = 'shop-price';
+    price.textContent = owned ? '已拥有' : item.price + ' 金币';
+    const action = document.createElement('button');
+    action.dataset.costume = item.id;
+    if (equipped) { action.textContent = '已装备'; action.disabled = true; }
+    else if (owned) { action.textContent = '装备'; action.onclick = () => equipCostume(item.id); }
+    else {
+      action.textContent = shopState.coins >= item.price ? '购买 · ' + item.price : '还差 ' + (item.price - shopState.coins);
+      action.disabled = !shopStorageOK;
+      action.onclick = () => purchaseCostume(item.id);
+    }
+    card.append(preview, title, price, action);
+    shopGrid.append(card);
+    drawCostumePreview(preview, item.id);
+  }
+  document.querySelector('#unequipBtn').disabled = !shopState.equipped;
+  updateCoinUI();
+}
+function openShop(opener) {
+  shopOpener = opener;
+  renderShop();
+  setShopMessage(shopStorageOK ? '选择一款装扮，购买后会立即装备' : '本地存档不可用，购买功能已暂停', !shopStorageOK);
+  shopDialog.showModal();
+  document.querySelector('#shopTitle').focus();
+}
+function closeShop() {
+  if (!shopDialog.open) return;
+  shopDialog.close();
+}
+shopDialog.addEventListener('close', () => { if (shopOpener) shopOpener.focus(); shopOpener = null; });
+shopDialog.addEventListener('click', e => { if (e.target === shopDialog) closeShop(); });
+shopDialog.addEventListener('pointerdown', e => e.stopPropagation());
+menuShopBtn.onclick = () => openShop(menuShopBtn);
+endShopBtn.onclick = () => openShop(endShopBtn);
+document.querySelector('#shopCloseBtn').onclick = closeShop;
+document.querySelector('#unequipBtn').onclick = unequipCostume;
 
 // ===== 界面切换 =====
 function menu() {
@@ -210,7 +390,7 @@ function renderMenuInfo() {
 function start() {
   menuEl.classList.add('off'); end.classList.add('off');
   run = 1; paused = 0;
-  score = 0; speed = 6; wait = 48; obs = []; gems = []; parts = []; floats = []; ghost = [];
+  score = 0; runCoins = 0; speed = 6; wait = 48; obs = []; gems = []; parts = []; floats = []; ghost = [];
   py = 0; pvy = 0; jumpCount = 0; holdJump = 0; combo = 0; comboMax = 0;
   gameT = 0; flash = 0; dying = 0; dieT = 0;
   // 狗：从身后追来；首扑延迟(关卡越高越快登场)
@@ -275,8 +455,9 @@ function spawnWave() {
   // 若这波有双柱，冷却必须大于双柱到达间隔(100帧)+缓冲，避免波与波挤在一起
   wait = (gap + (made === 2 ? 130 : 0)) * (0.85 + Math.random() * 0.4);
 }
-function maybeSpawnGems() {
-  if (gems.length < 3 && Math.random() < 0.025) {
+function maybeSpawnGems(dt) {
+  const chance = 1 - Math.pow(1 - 0.025, dt);
+  if (gems.length < 3 && Math.random() < chance) {
     const r = Math.random();
     const type = r < 0.35 ? 0 : r < 0.75 ? 1 : 2;   // 贴地/低/高
     gems.push({ x: side === 1 ? W + 50 : -50, px: 0, type });
@@ -419,14 +600,14 @@ function loop(t) {
     py += pvy * dt;
     if (py <= 0) {
       py = 0; pvy = 0; jumpCount = 0; holdJump = 0; jumpHoldFrames = 0;
-      spawnBurst(pxs, ground, '#4aa8ff', 6, 2.2);
+      spawnBurst(pxs, ground, runnerColor(), 6, 2.2);
     }
   }
 
   // 障碍
   wait -= dt;
   if (wait <= 0) spawnWave();
-  maybeSpawnGems();
+  maybeSpawnGems(dt);
   obs.forEach(o => { o.px = o.x; o.x -= side * speed * dt; });
   obs = obs.filter(o => side === 1 ? o.x > -80 : o.x < W + 80);
 
@@ -458,13 +639,15 @@ function loop(t) {
   // 能量球：移动 + 收集
   gems.forEach(g => { g.px = g.x; g.x -= side * speed * dt; });
   gems = gems.filter(g => side === 1 ? g.x > -80 : g.x < W + 80);
-  for (let i = gems.length - 1; i >= 0; i--) {
-    const g = gems[i];
-    const gyy = ground - GEM_OFF[g.type];
-    const foot = ground - py;
-    if (g.x > pxs - 26 && g.x < pxs + 26 && Math.abs(foot - gyy) < 42) {
-      collectGem(g, pxs, foot, gyy);
-      gems.splice(i, 1);
+  if (!dying) {
+    for (let i = gems.length - 1; i >= 0; i--) {
+      const g = gems[i];
+      const gyy = ground - GEM_OFF[g.type];
+      const foot = ground - py;
+      if (g.x > pxs - 26 && g.x < pxs + 26 && Math.abs(foot - gyy) < 42) {
+        collectGem(g, pxs, foot, gyy);
+        gems.splice(i, 1);
+      }
     }
   }
 
@@ -518,12 +701,12 @@ function loop(t) {
   ghost = ghost.filter(g2 => (g2.life -= 0.055) > 0);
   for (const g2 of ghost) {
     x.globalAlpha = g2.life * 0.35;
-    x.strokeStyle = side === 1 ? '#52f5ff' : '#ff3cae';
+    x.strokeStyle = runnerColor();
     x.lineWidth = 4;
-    x.beginPath(); x.arc(g2.xx, g2.yy - 68, 11, 0, 7); x.stroke();
+    x.beginPath(); x.arc(g2.xx, g2.yy - 58, 11, 0, 7); x.stroke();
   }
   x.globalAlpha = 1;
-  drawRunner(pxs, ground - py);
+  drawCostumedRunner(x, pxs, ground - py, t, shopState.equipped, side, runnerColor(), py > 6);
   drawDog();   // 身后追逐的狗
 
   // 粒子
@@ -566,33 +749,166 @@ function collectGem(g, pxs, foot, gyy) {
   if (combo > comboMax) comboMax = combo;
   const mult = 1 + Math.floor(combo / 5);
   const gain = GEM_VAL[g.type] * mult;
+  const coinGain = GEM_COIN[g.type];
   score += gain;
+  const next = { coins: Math.min(Number.MAX_SAFE_INTEGER, shopState.coins + coinGain), owned: [...shopState.owned], equipped: shopState.equipped };
+  shopState = next;
+  runCoins += coinGain;
+  if (!saveShopState(next)) shopStorageOK = false;
+  updateCoinUI();
   const col = g.type === 0 ? '#4fe3ff' : g.type === 1 ? '#ffd94a' : '#ff6ad5';
   spawnBurst(pxs, gyy, col, 12, 3.2);
-  addFloat(pxs, gyy - 16, '+' + gain + (mult > 1 ? ' ×' + mult : ''), col, 1);
+  addFloat(pxs, gyy - 16, '+' + gain + (mult > 1 ? ' ×' + mult : '') + '分 · +' + coinGain + '金币', col, 1);
   if (combo >= 5 && combo % 5 === 0) {
     addFloat(pxs, gyy - 40, '连击 ×' + mult + ' !', '#ffd94a', 1.2);
     spawnRing(pxs, gyy, '#ffd94a');
   }
 }
 
-function drawRunner(xx, yy) {
-  const col = side === 1 ? '#52f5ff' : '#ff3cae';
-  x.strokeStyle = col; x.lineWidth = 5; x.lineJoin = 'round'; x.lineCap = 'round';
-  x.beginPath();
-  x.arc(xx, yy - 68, 11, 0, 7);
-  x.moveTo(xx, yy - 55); x.lineTo(xx, yy - 20);
-  x.moveTo(xx, yy - 40); x.lineTo(xx - 18, yy - 25);
-  x.moveTo(xx, yy - 40); x.lineTo(xx + 18, yy - 30);
-  x.moveTo(xx, yy - 20); x.lineTo(xx - 16, yy + 7);
-  x.moveTo(xx, yy - 20); x.lineTo(xx + 16, yy + 7);
-  x.stroke();
+// ===== 角色与装扮 =====
+function buildRunnerPose(xx, yy, t, dir, color, air) {
+  const phase = t * 0.02;
+  const legSwing = air ? 6 : Math.sin(phase * 2) * 13;
+  return {
+    xx, yy, dir, color, air, phase, legSwing,
+    sway: Math.cos(phase) * 9,
+    headY: yy - 58,
+    shoulderY: yy - 40,
+    hipY: yy - 22,
+    backFootX: xx + legSwing + 4,
+    frontFootX: xx - legSwing - 4
+  };
+}
+function costumeTransform(ctx, pose, draw) {
+  ctx.save();
+  ctx.translate(pose.xx, pose.yy);
+  ctx.scale(pose.dir, 1);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  draw();
+  ctx.restore();
+}
+function drawCostumeBack(ctx, pose, id, t) {
+  if (!id) return;
+  costumeTransform(ctx, pose, () => {
+    const wave = Math.sin(pose.phase * 1.7);
+    if (id === 'goggles') {
+      ctx.strokeStyle = '#5b3ea8'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, -58, 12, Math.PI * .72, Math.PI * 1.35); ctx.stroke();
+    } else if (id === 'headphones') {
+      ctx.strokeStyle = '#846cff'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(0, -59, 14, Math.PI, Math.PI * 2); ctx.stroke();
+    } else if (id === 'scarf') {
+      const lift = pose.air ? -10 : wave * 5;
+      ctx.lineWidth = 5; ctx.strokeStyle = '#52f5ff';
+      ctx.beginPath(); ctx.moveTo(-3, -43); ctx.bezierCurveTo(-20, -46, -32, -39 + lift, -49, -43 + lift); ctx.stroke();
+      ctx.lineWidth = 3; ctx.strokeStyle = '#ff5fa8';
+      ctx.beginPath(); ctx.moveTo(-5, -40); ctx.bezierCurveTo(-22, -39, -36, -31 + lift, -55, -34 + lift); ctx.stroke();
+    } else if (id === 'backpack') {
+      const bob = Math.sin(pose.phase * 2) * 2;
+      ctx.fillStyle = '#241651'; ctx.strokeStyle = '#52f5ff'; ctx.lineWidth = 2;
+      ctx.fillRect(-18, -43 + bob, 14, 24); ctx.strokeRect(-18, -43 + bob, 14, 24);
+      ctx.fillStyle = '#ffd94a'; ctx.fillRect(-15, -37 + bob, 3, 5); ctx.fillStyle = '#52f5ff'; ctx.fillRect(-10, -37 + bob, 3, 5);
+    } else if (id === 'cape') {
+      const spread = pose.air ? 18 : 7 + wave * 3;
+      ctx.fillStyle = '#33206fa8'; ctx.strokeStyle = '#52f5ff'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(-4, -42); ctx.lineTo(-23 - spread, -35); ctx.lineTo(-30 - spread, -10); ctx.lineTo(-20 - spread, -15); ctx.lineTo(-13 - spread, -9); ctx.lineTo(-7, -25); ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else if (id === 'wings') {
+      const open = pose.air ? 1 : .55;
+      for (const s of [-1, 1]) {
+        ctx.strokeStyle = s === 1 ? '#ff5fa8' : '#52f5ff'; ctx.fillStyle = s === 1 ? '#ff5fa822' : '#52f5ff22'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-3, -39); ctx.lineTo(-24 * open, -57 + s * wave * 2); ctx.lineTo(-18 * open, -39); ctx.lineTo(-32 * open, -30); ctx.lineTo(-6, -31); ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+    } else if (id === 'helmet') {
+      ctx.fillStyle = '#191447'; ctx.strokeStyle = '#846cff'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, -58, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-10, -70); ctx.lineTo(-15, -80); ctx.lineTo(-12, -84); ctx.stroke();
+      ctx.fillStyle = '#52f5ff'; ctx.beginPath(); ctx.arc(-12, -84, 2, 0, 7); ctx.fill();
+    } else if (id === 'dragon') {
+      const lift = pose.air ? -8 : wave * 3;
+      ctx.strokeStyle = '#ff6b35'; ctx.fillStyle = '#ff315f26'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(-5, -40); ctx.bezierCurveTo(-22, -62 + lift, -44, -54 + lift, -46, -37 + lift); ctx.lineTo(-55, -45 + lift); ctx.lineTo(-52, -30 + lift); ctx.bezierCurveTo(-35, -19, -22, -17, -8, -25); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-24, -53 + lift); ctx.lineTo(-31, -66 + lift); ctx.lineTo(-35, -50 + lift); ctx.fill();
+      ctx.fillStyle = '#52f5ff'; ctx.beginPath(); ctx.arc(-42, -41 + lift, 2, 0, 7); ctx.fill();
+    }
+  });
+}
+function drawRunnerBase(ctx, pose) {
+  const { xx, yy, dir, color, air, phase, legSwing, sway, headY, shoulderY, hipY } = pose;
+  ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 4.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(xx, hipY); ctx.lineTo(xx + legSwing, yy - 11); ctx.lineTo(xx + legSwing + 4, yy);
+  ctx.moveTo(xx, hipY); ctx.lineTo(xx - legSwing, yy - 11); ctx.lineTo(xx - legSwing - 4, yy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(xx, yy - 42); ctx.lineTo(xx + sway * .4, hipY); ctx.stroke();
+  ctx.beginPath();
+  if (air) { ctx.moveTo(xx, shoulderY); ctx.lineTo(xx - 14, shoulderY - 16); ctx.moveTo(xx, shoulderY); ctx.lineTo(xx + 14, shoulderY - 16); }
+  else { ctx.moveTo(xx, shoulderY); ctx.lineTo(xx - 15, shoulderY + 12 * Math.max(.2, Math.cos(phase * 2))); ctx.moveTo(xx, shoulderY); ctx.lineTo(xx + 15, shoulderY - 12 * Math.max(.2, Math.cos(phase * 2))); }
+  ctx.stroke();
+  ctx.beginPath(); ctx.arc(xx, headY, 11, 0, 7); ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(xx + dir * 4, headY - 2, 1.8, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(xx + dir * 9, headY - 2, 1.8, 0, 7); ctx.fill();
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+  ctx.arc(xx + dir * 6, headY + (air ? 4 : 5), air ? 3.4 : 2.6, air ? .15 * Math.PI : .1 * Math.PI, air ? .85 * Math.PI : .9 * Math.PI); ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(xx, hipY + 2); ctx.lineTo(xx - 4.5, hipY + 9); ctx.lineTo(xx + 4.5, hipY + 9); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function drawCostumeFront(ctx, pose, id, t) {
+  if (!id) return;
+  costumeTransform(ctx, pose, () => {
+    const pulse = 1 + Math.sin(pose.phase * 2) * .08;
+    if (id === 'goggles') {
+      ctx.fillStyle = '#52f5ff66'; ctx.strokeStyle = '#52f5ff'; ctx.lineWidth = 1.5;
+      for (const cx of [3, 10]) { ctx.beginPath(); ctx.ellipse(cx, -60, 4.5, 3.5, 0, 0, 7); ctx.fill(); ctx.stroke(); }
+      ctx.beginPath(); ctx.moveTo(7, -60); ctx.lineTo(6, -60); ctx.stroke();
+    } else if (id === 'cat_ears') {
+      ctx.fillStyle = '#ff5fa8'; ctx.strokeStyle = pose.color; ctx.lineWidth = 2;
+      for (const cx of [-6, 7]) { ctx.beginPath(); ctx.moveTo(cx - 5, -67); ctx.lineTo(cx, -82 + Math.sin(pose.phase + cx) * 2); ctx.lineTo(cx + 5, -68); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+      ctx.fillStyle = '#52f5ff'; ctx.beginPath(); ctx.arc(7, -82, 1.7, 0, 7); ctx.fill();
+    } else if (id === 'headphones') {
+      ctx.fillStyle = '#28135a'; ctx.strokeStyle = '#52f5ff'; ctx.lineWidth = 2;
+      for (const cx of [-12, 12]) { ctx.beginPath(); ctx.arc(cx, -57, 5 * pulse, 0, 7); ctx.fill(); ctx.stroke(); }
+      ctx.strokeStyle = '#ff5fa8'; ctx.beginPath(); ctx.arc(12, -57, 2.5 * pulse, 0, 7); ctx.stroke();
+    } else if (id === 'scarf') {
+      ctx.strokeStyle = '#ffd94a'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, -43, 7, .15, Math.PI - .15); ctx.stroke();
+      ctx.fillStyle = '#ff5fa8'; ctx.beginPath(); ctx.arc(6, -42, 3, 0, 7); ctx.fill();
+    } else if (id === 'crown') {
+      const bob = Math.sin(pose.phase * 1.2) * 2;
+      ctx.strokeStyle = '#ffd94a'; ctx.fillStyle = '#ffd94a33'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(-10, -73 + bob); ctx.lineTo(-8, -84 + bob); ctx.lineTo(-3, -78 + bob); ctx.lineTo(1, -89 + bob); ctx.lineTo(5, -78 + bob); ctx.lineTo(11, -85 + bob); ctx.lineTo(10, -72 + bob); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ff5fa8'; ctx.beginPath(); ctx.arc(1, -80 + bob, 2, 0, 7); ctx.fill();
+      ctx.strokeStyle = '#52f5ff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-15, -80 + bob); ctx.lineTo(-12, -84 + bob); ctx.moveTo(14, -80 + bob); ctx.lineTo(17, -84 + bob); ctx.stroke();
+    } else if (id === 'helmet') {
+      ctx.fillStyle = '#52f5ff35'; ctx.strokeStyle = '#52f5ff'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(3, -58, 12, -1.25, 1.25); ctx.lineTo(1, -47); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(7, -66 - (pose.air ? 1 : 0), 1.6, 0, 7); ctx.fill();
+    } else if (id === 'dragon') {
+      ctx.strokeStyle = '#ffd94a'; ctx.fillStyle = '#ff6b35'; ctx.lineWidth = 2;
+      for (const cx of [-6, 7]) { ctx.beginPath(); ctx.moveTo(cx - 3, -68); ctx.quadraticCurveTo(cx - 6, -80, cx + 2, -77); ctx.lineTo(cx + 4, -68); ctx.fill(); ctx.stroke(); }
+      ctx.strokeStyle = '#ff315f'; ctx.lineWidth = 3;
+      for (const fx of [pose.backFootX - pose.xx, pose.frontFootX - pose.xx]) { ctx.beginPath(); ctx.moveTo(fx - 5, -1); ctx.lineTo(fx - 11, -5); ctx.lineTo(fx - 8, 1); ctx.stroke(); }
+    }
+  });
+}
+function drawCostumedRunner(ctx, xx, yy, t, costumeId, dir, color, air) {
+  const pose = buildRunnerPose(xx, yy, t, dir, color, air);
+  drawCostumeBack(ctx, pose, costumeId, t);
+  drawRunnerBase(ctx, pose);
+  drawCostumeFront(ctx, pose, costumeId, t);
+}
+function drawCostumePreview(canvas, costumeId) {
+  const ratio = Math.min(devicePixelRatio || 1, 2);
+  canvas.width = 150 * ratio; canvas.height = 112 * ratio;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.fillStyle = '#08051b'; ctx.fillRect(0, 0, 150, 112);
+  ctx.strokeStyle = '#241a55'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(10, 101); ctx.lineTo(140, 101); ctx.stroke();
+  drawCostumedRunner(ctx, 75, 100, 930, costumeId, 1, C_GREEN, costumeId === 'wings');
 }
 
 // ===== 结算 =====
 function finish() {
   run = 0;
   document.querySelector('#final').textContent = score;
+  document.querySelector('#runCoins').textContent = '+' + runCoins;
+  document.querySelector('#endCoins').textContent = shopState.coins;
   const prev = best, isNew = score > prev;
   if (isNew) { best = score; saveBest(); }
   document.querySelector('#newBest').style.display = isNew ? '' : 'none';
