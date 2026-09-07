@@ -4,3 +4,6 @@ dist-mac/
 *.log
 *.png
 .DS_Store
+.commandcode/
+mac-src/
+package-lock.json
