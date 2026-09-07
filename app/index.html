@@ -106,6 +106,19 @@ dialog button{background:#28135a;color:#fff;border:1px solid #846cff;cursor:poin
 .hist-filter button.on{border-color:#52f5ff;color:#52f5ff}
 .shop-grid.costumes{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 @media(max-width:640px){.menu-body{min-width:94vw;padding:14px}.hist-row{grid-template-columns:1fr auto auto;grid-template-rows:auto auto}.lv-grid{grid-template-columns:1fr 1fr}.item-card{grid-template-columns:38px 1fr}}
+/* ===== 每日任务 ===== */
+.task-card{display:grid;grid-template-columns:auto 1fr auto;gap:10px 14px;align-items:center;padding:12px 14px;background:#0b0822;border:1px solid #34296a;margin-bottom:10px;text-align:start}
+.task-ic{width:46px;height:46px;display:grid;place-items:center;font-size:24px;background:#17103a;border:1px solid #846cff55;grid-row:1/3}
+.task-name{font-size:15px;font-weight:bold}
+.task-desc{color:#bdb4e5;font-size:12px}
+.task-prog{grid-column:2;font-size:12px;color:#9d93c8;height:6px;background:#171129;border-radius:3px;overflow:hidden;margin-top:2px}
+.task-prog i{display:block;height:100%;background:linear-gradient(90deg,#52f5ff,#ffd94a);border-radius:3px;transition:width .3s}
+.task-get{grid-column:3;grid-row:1/3;font-size:13px;padding:8px 12px;min-width:88px;text-align:center}
+.task-get.ready{background:#0d3b2a;border:1px solid #5df2b0;color:#5df2b0;cursor:pointer}
+.task-get.done{background:#171129;border:1px solid #2a2350;color:#9d93c8;cursor:default}
+.task-done-tag{color:#5df2b0;font-size:12px}
+/* ===== 教程 ===== */
+.tut-card{border-color:#ffd94a!important;box-shadow:0 0 16px #ffd94a33}
 </style>
 <canvas id="c"></canvas>
 <div class="hud">
@@ -128,6 +141,7 @@ dialog button{background:#28135a;color:#fff;border:1px solid #846cff;cursor:poin
         <button id="menuShopBtn" class="shop-open">装扮商店 · <span class="coin">0</span> 金币</button>
         <button id="menuItemsBtn">🎒 道具背包</button>
         <button id="menuUpgradeBtn">⚡ 被动升级</button>
+        <button id="menuDailyBtn">📅 每日任务</button>
         <button id="menuHistBtn">📜 挑战历史</button>
       </div>
     </div>
@@ -149,6 +163,17 @@ dialog button{background:#28135a;color:#fff;border:1px solid #846cff;cursor:poin
     <small><kbd>1</kbd>-<kbd>5</kbd> 使用道具 · <kbd>P</kbd> 暂停 · <kbd>R</kbd> 快速重开</small>
   </div>
 </div>
+<div id="tutIntro" class="layer off">
+  <div class="box">
+    <h1>🎓 新手教程</h1>
+    <p style="color:#cdd6ff">想先花 1 分钟学会跳跃、连击与躲避疯狗吗？</p>
+    <div class="row">
+      <button id="tutGoBtn">▶ 开始教程</button>
+      <button id="tutSkipBtn">直接开始挑战</button>
+    </div>
+    <small class="dim">教程随时可在选关界面重新进入</small>
+  </div>
+</div>
 <div id="pauseLayer" class="layer off">
   <div class="box">
     <h1>已暂停</h1>
@@ -159,6 +184,7 @@ dialog button{background:#28135a;color:#fff;border:1px solid #846cff;cursor:poin
     </div>
   </div>
 </div>
+<div id="tutHint" class="off" style="position:fixed;z-index:5;left:50%;top:14px;transform:translateX(-50%);background:#100a2be6;border:1px solid #ffd94a;color:#fff;padding:8px 16px;border-radius:8px;font-size:14px;pointer-events:none;text-align:center;max-width:86vw"></div>
 <div id="end" class="layer off">
   <div class="box">
     <h1 id="endTitle">撞上了</h1>
@@ -238,6 +264,18 @@ dialog button{background:#28135a;color:#fff;border:1px solid #846cff;cursor:poin
     </div>
   </div>
 </dialog>
+<dialog id="taskDialog" aria-labelledby="taskTitle">
+  <div class="shop-shell">
+    <header class="shop-head">
+      <div><h1 id="taskTitle" tabindex="-1">📅 每日任务</h1><small>每天 3 个任务，次日 0 点刷新；完成后记得领取金币</small></div>
+      <div class="shop-balance">余额 <b id="taskCoins">0</b> <button id="taskCloseBtn" class="shop-close" aria-label="关闭">×</button></div>
+    </header>
+    <div class="dialog-main">
+      <div id="taskList"></div>
+      <p class="dialog-hint" id="taskRefresh">任务于每天 0 点刷新</p>
+    </div>
+  </div>
+</dialog>
 <script>
 (function () {
 const c = document.querySelector('#c');
@@ -280,6 +318,14 @@ const histDialog = document.querySelector('#histDialog');
 const histStats = document.querySelector('#histStats');
 const histFilter = document.querySelector('#histFilter');
 const histList = document.querySelector('#histList');
+// 每日任务 / 教程元素
+const menuDailyBtn = document.querySelector('#menuDailyBtn');
+const taskDialog = document.querySelector('#taskDialog');
+const taskList = document.querySelector('#taskList');
+const taskCoins = document.querySelector('#taskCoins');
+const taskRefresh = document.querySelector('#taskRefresh');
+const tutIntro = document.querySelector('#tutIntro');
+const tutHint = document.querySelector('#tutHint');
 // 结算面板元素
 const finalEl = document.querySelector('#final');
 const runCoinsEl = document.querySelector('#runCoins');
@@ -536,6 +582,34 @@ const PASSIVES = [
   { id: 'magnetStart', name: '开局磁铁', icon: '🧲', base: 200, max: 3, desc: lv => '开局自带磁铁 ' + (lv * 5) + 's' }
 ];
 const PASSIVE_MAP = new Map(PASSIVES.map(p => [p.id, p]));
+// ===== 每日任务 =====
+const DAILY_KEY = 'neon_daily_v1';
+const TUT_KEY = 'neon_tut_v1';
+// 任务池：type 对应进度来源，target 目标值，reward 金币
+const DAILY_POOL = [
+  { id: 'run1', icon: '🏃', name: '热身运动', desc: '完成 1 局挑战', type: 'runs', target: 1, reward: 80 },
+  { id: 'run3', icon: '🔥', name: '渐入佳境', desc: '完成 3 局挑战', type: 'runs', target: 3, reward: 200 },
+  { id: 'score1', icon: '💯', name: '初露锋芒', desc: '累计得分达到 500', type: 'score', target: 500, reward: 120 },
+  { id: 'score2', icon: '🌟', name: '高分达人', desc: '累计得分达到 2000', type: 'score', target: 2000, reward: 260 },
+  { id: 'coin1', icon: '🪙', name: '金币猎手', desc: '累计获得 100 金币', type: 'coins', target: 100, reward: 150 },
+  { id: 'coin2', icon: '💰', name: '富甲一方', desc: '累计获得 300 金币', type: 'coins', target: 300, reward: 300 },
+  { id: 'combo1', icon: '⚡', name: '连击新星', desc: '单局最高连击达到 8', type: 'comboMax', target: 8, reward: 180 },
+  { id: 'combo2', icon: '🌪', name: '连击大师', desc: '单局最高连击达到 15', type: 'comboMax', target: 15, reward: 320 },
+  { id: 'time1', icon: '⏱', name: '坚持就是胜利', desc: '单局存活达到 30 秒', type: 'timeMax', target: 30, reward: 160 },
+  { id: 'time2', icon: '🏆', name: '耐力之王', desc: '单局存活达到 60 秒', type: 'timeMax', target: 60, reward: 340 },
+  { id: 'pick1', icon: '🎁', name: '拾荒者', desc: '累计拾取 5 个道具盒', type: 'pickups', target: 5, reward: 160 },
+  { id: 'pick2', icon: '📦', name: '满载而归', desc: '累计拾取 12 个道具盒', type: 'pickups', target: 12, reward: 300 },
+  { id: 'gem1', icon: '💎', name: '宝石收藏家', desc: '累计吃 100 颗能量球', type: 'gems', target: 100, reward: 220 },
+  { id: 'jump1', icon: '🦘', name: '跳跃健将', desc: '累计跳跃 80 次', type: 'jumps', target: 80, reward: 200 }
+];
+// 教程进度步骤（按 gameT 帧推进或事件推进）
+let tutStep = 0;          // 当前教学步骤 -1=未开始 0..N
+let tutDone = false;      // 教程是否完成过（存档）
+let tutorialMode = false; // 本局是否教程关
+let introShown = false;   // 首次引导是否已弹过（仅本次运行）
+let tutDist = 0;          // 教程已跑距离(px)
+let daily = null;         // { date, tasks:[{id,type,target,reward,prog,done,claimed}] }
+let runStats = { jumps: 0, gems: 0 };   // 本局累计跳跃次数 / 吃球数（任务用）
 let W, H, run = 0, paused = 0, side = 1, level = 1;
 let score = 0, best = 0, speed, wait, obs = [], gems = [], parts = [], floats = [], ghost = [];
 let sweeps = [];   // 扁障碍（低扫火球 / 激光）
@@ -633,6 +707,163 @@ function loadHistory() {
 function saveHistory() {
   try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch (e) {}
 }
+// ===== 每日任务 =====
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+// 用日期做种子稳定抽取（同一天每次进菜单任务一致）
+function seededPick(arr, seed) {
+  let s = seed >>> 0;
+  const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  const pool = arr.slice();
+  const out = [];
+  while (pool.length && out.length < 3) out.push(pool.splice(Math.floor(rnd() * pool.length), 1)[0]);
+  return out;
+}
+function dateSeed(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h;
+}
+function loadDaily() {
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem(DAILY_KEY) || 'null'); } catch (e) { raw = null; }
+  const today = todayStr();
+  if (raw && raw.date === today && Array.isArray(raw.tasks) && raw.tasks.length === 3) {
+    daily = raw;
+  } else {
+    // 抽 3 个不重复任务
+    const picked = seededPick(DAILY_POOL, dateSeed(today));
+    daily = { date: today, tasks: picked.map(t => ({ id: t.id, type: t.type, target: t.target, reward: t.reward, prog: 0, claimed: false })) };
+    saveDaily();
+  }
+}
+function saveDaily() {
+  try { localStorage.setItem(DAILY_KEY, JSON.stringify(daily)); } catch (e) {}
+}
+// 任务进度来源：finish() 结束时调用（非教程局）
+function bumpDaily(type, amount) {
+  if (!daily || tutorialMode) return;
+  daily.tasks.forEach(t => {
+    if (t.type === type && !t.claimed) {
+      t.prog = Math.min(t.target, t.prog + amount);
+    }
+  });
+  saveDaily();
+}
+// 用本局峰值比较型任务更新
+function dailyBest(type, val) {
+  if (!daily || tutorialMode) return;
+  daily.tasks.forEach(t => {
+    if (t.type === type && !t.claimed && val >= t.target) t.prog = t.target;
+  });
+  saveDaily();
+}
+function claimTask(idx) {
+  const t = daily && daily.tasks[idx];
+  if (!t || t.claimed || t.prog < t.target) return;
+  t.claimed = true;
+  shopState.coins = Math.min(Number.MAX_SAFE_INTEGER, shopState.coins + t.reward);
+  saveDaily();
+  saveShopState();
+  updateCoinUI();
+  renderTaskList();
+}
+function renderTaskList() {
+  if (!daily) return;
+  taskList.textContent = '';
+  const t = new Date();
+  taskRefresh.textContent = '任务于明天 0 点刷新 · 当前 ' + (t.getMonth() + 1) + '/' + t.getDate() + ' · 剩余 ' + (3 - daily.tasks.filter(x => x.claimed).length) + ' 个待领取';
+  daily.tasks.forEach((tk, idx) => {
+    const def = DAILY_POOL.find(p => p.id === tk.id) || { icon: '🎯', name: '', desc: '' };
+    const done = tk.prog >= tk.target;
+    const card = document.createElement('div');
+    card.className = 'task-card';
+    const ic = document.createElement('div');
+    ic.className = 'task-ic';
+    ic.textContent = def.icon;
+    const name = document.createElement('div');
+    name.className = 'task-name';
+    name.textContent = (done ? '✅ ' : '') + def.name;
+    const desc = document.createElement('div');
+    desc.className = 'task-desc';
+    desc.textContent = def.desc;
+    const barWrap = document.createElement('div');
+    barWrap.className = 'task-prog';
+    const bar = document.createElement('i');
+    bar.style.width = Math.min(100, tk.prog / tk.target * 100) + '%';
+    barWrap.append(bar);
+    const progTxt = document.createElement('div');
+    progTxt.className = 'task-desc';
+    progTxt.style.gridColumn = '2';
+    progTxt.textContent = done ? (tk.claimed ? '已完成' : '可领取！') : tk.prog + ' / ' + tk.target;
+    const btn = document.createElement('button');
+    btn.className = 'task-get';
+    if (tk.claimed) { btn.textContent = '已领取'; btn.className += ' done'; btn.disabled = true; }
+    else if (done) { btn.textContent = '领取 ' + tk.reward; btn.className += ' ready'; btn.onclick = () => claimTask(idx); }
+    else { btn.textContent = tk.reward + ' 金币'; btn.className += ' done'; btn.disabled = true; }
+    card.append(ic, name, desc, progTxt, barWrap, btn);
+    taskList.append(card);
+  });
+  taskCoins.textContent = shopState.coins;
+}
+function openDaily() {
+  loadDaily();
+  renderTaskList();
+  taskDialog.showModal();
+  document.querySelector('#taskTitle').focus();
+}
+// ===== 新手教程 =====
+function loadTutFlag() {
+  try { tutDone = localStorage.getItem(TUT_KEY) === '1'; } catch (e) { tutDone = false; }
+}
+function saveTutFlag() {
+  try { localStorage.setItem(TUT_KEY, tutDone ? '1' : '0'); } catch (e) {}
+}
+function showTutIntro() {
+  tutIntro.classList.remove('off');
+}
+function hideTutIntro() {
+  tutIntro.classList.add('off');
+}
+// 教程引导文案：step 递增时显示
+const TUT_HINTS = [
+  '欢迎来到霓虹跑酷！按 <kbd>空格</kbd> 或点击屏幕起跳，跳过眼前的柱子。',
+  '落地后继续向前，跳过第二根柱子。',
+  '看到空中的能量球了吗？碰触即可得分，注意连续吃会触发连击。',
+  '前方出现矮柱，跳过它并尽量吃到高处的能量球。',
+  '看到地上发光的道具盒了吗？吃到它能获得随机增益。',
+  '🟠 疯狗要来了！等它扑向你的瞬间跳起来躲避，落地会被咬住！',
+  '你已经掌握基本操作！保持节奏再跑一段就通关啦。'
+];
+function tutorialStart() {
+  level = 0;
+  tutorialMode = true;
+  tutStep = 0;
+  tutDist = 0;
+  runStats.jumps = 0;
+  start();
+}
+// 教程关配置：基于第 1 关主题的低速安全版本（跑约 4200px 通关）
+const TUT_CFG = {
+  id: 0, title: '新手教程', subtitle: '边跑边学 · 轻松上手', icon: '🎓',
+  unlock: 0, maxSpeed: 9, firstDogCd: 99999, dogCdMin: 99999,
+  baseGap: 190, wideChance: 0, waveGapShrink: 0.6,
+  double: { start: Infinity, rate: 0 },
+  erupt: { start: Infinity, rate: 0 },
+  sweeps: { start: Infinity, rate: 0 },
+  dogs: 0, dog2At: Infinity, dogColor: '#ff8c42',
+  theme: {
+    skyTop: '#0d0730', skyBot: '#1b0f45', ground: '#322568',
+    pillarTop: '#ff315f', pillarBot: '#7c0e2c', pillarHi: '#ffa9b8', pillarStripe: '#ff5d7e',
+    danger: '#ff315f',
+  },
+  gems: ['#4fe3ff', '#ffd94a', '#ff6ad5'],
+  coinMult: 0, gemMult: 1,
+  decor: { kind: 'city' },
+  mech: '新手教程 · 无障碍压力'
+};
 let menuCoinEl = null;
 function updateCoinUI() {
   const shown = shopState.coins + (run ? pendingCoins : 0);
@@ -705,6 +936,8 @@ function toggleLoadout(id) {
 loadProgress();
 loadShopState();
 loadHistory();
+loadTutFlag();
+loadDaily();
 updateCoinUI();
 
 // 太空背景预生成星点（随窗口尺寸重建，避免每帧随机分配）
@@ -769,6 +1002,7 @@ function jumpStart() {
   if ((py > 1 || pvy < 0) && jumpCount === 1 && pvy <= 0 && py < 26) { jumpBuf = 5; return; }
   if (jumpCount < 2) {
     jumpCount++;
+    runStats.jumps++;   // 每日任务：累计起跳次数（一段/二段都计）
     holdJump = 1;
     jumpHoldFrames = 0;
     pvy = (jumpCount === 1 ? JV1 : JV2) * (1 + 0.03 * (shopState.passives.jumpPlus || 0));
@@ -875,7 +1109,10 @@ document.querySelector('#unequipBtn').onclick = unequipCostume;
 // ===== 界面切换 =====
 const DIALOGS = [shopDialog, itemDialog, upgradeDialog, histDialog];
 function anyDialogOpen() { return DIALOGS.some(d => d.open); }
-function cfg() { return LEVELS[level - 1]; }
+function cfg() {
+  if (tutorialMode) return TUT_CFG;
+  return LEVELS[level - 1];
+}
 function lvName(lv) { return LEVELS[lv - 1].title; }
 // 局内金币入账：仅在结算/重开/退出时落盘一次
 function bankPendingCoins() {
@@ -887,8 +1124,12 @@ function bankPendingCoins() {
 }
 function menu() {
   bankPendingCoins();
+  // 退出教程模式（返回菜单后按正常关卡渲染）
+  tutorialMode = false;
+  if (level === 0) level = 1;   // 教程用 level=0，回菜单恢复第 1 关
+  tutHint.classList.add('off');
   run = 0; paused = 0;
-  end.classList.add('off'); pauseLayer.classList.add('off');
+  end.classList.add('off'); pauseLayer.classList.add('off'); hideTutIntro();
   menuEl.classList.remove('off');
   hudItems.textContent = ''; hudBuffs.textContent = '';
   updateBest();
@@ -898,6 +1139,12 @@ function menu() {
   renderSideBtns();
   renderLoadoutHint();
   renderMenuTag();
+  loadDaily();
+  // 仅首次进主菜单（且未完成教程）弹教程引导；之后可从选关卡「🎓 新手教程」随时进入
+  if (!tutDone && !introShown) {
+    introShown = true;
+    showTutIntro();
+  }
 }
 function togglePause() {
   if (!run) return;
@@ -912,6 +1159,17 @@ function restart() {
 }
 function renderLevelCards() {
   lvGrid.textContent = '';
+  // 新手教程卡（始终解锁置顶）
+  const tutCard = document.createElement('button');
+  tutCard.type = 'button';
+  tutCard.className = 'lv-card unlocked tut-card' + (level === 0 && !tutorialMode ? ' selected' : '');
+  tutCard.innerHTML =
+    '<span class="ic">🎓</span>' +
+    '<b>' + (tutDone ? '复习：' : '新手教程') + '</b>' +
+    '<span class="st">' + (tutDone ? '随时回来复习操作' : '首次游玩？先花 1 分钟上手') + '</span>' +
+    '<span class="lv-badge play">进入</span>';
+  tutCard.onclick = () => { hideTutIntro(); tutorialStart(); };
+  lvGrid.append(tutCard);
   LEVELS.forEach((L) => {
     const unlocked = best >= L.unlock;
     const card = document.createElement('button');
@@ -1090,8 +1348,9 @@ function renderHistList(filterLv) {
 }
 // ===== 开始 / 结束 =====
 function start() {
-  menuEl.classList.add('off'); end.classList.add('off');
+  menuEl.classList.add('off'); end.classList.add('off'); hideTutIntro();
   run = 1; paused = 0;
+  runStats.jumps = 0; runStats.gems = 0;
   score = 0; runCoins = 0; pendingCoins = 0; speed = 6 + (shopState.passives.startSpeed || 0); wait = 48;
   obs = []; gems = []; parts = []; floats = []; ghost = []; sweeps = [];
   py = 0; pvy = 0; jumpCount = 0; holdJump = 0; combo = 0; comboMax = 0;
@@ -1102,8 +1361,15 @@ function start() {
   dust = { t: 0, on: false };
   pickups = []; pickupsGot = 0; jumpBuf = 0;
   buildSpaceStars();
-  // 道具：扣除背包（携带即消耗）；库存不足的自动移出携带
   const c = cfg();
+  if (tutorialMode) {
+    // 教程：不消耗背包道具、不吃被动增益、无疯狗，低速起跑
+    loadout = [];
+    tutHint.innerHTML = TUT_HINTS[0];
+    tutHint.classList.remove('off');
+    speed = 6;
+  }
+  // 道具：扣除背包（携带即消耗）；库存不足的自动移出携带
   loadout = loadout.filter(id => shopState.items[id] > 0);
   loadout.forEach(id => {
     shopState.items = { ...shopState.items, [id]: shopState.items[id] - 1 };
@@ -1119,11 +1385,14 @@ function start() {
   });
   // 开局磁铁（被动）
   const ms = shopState.passives.magnetStart || 0;
-  if (ms > 0) buffs.magnet = Math.max(buffs.magnet || 0, ms * 5 * 60);
-  // 狗：主狗 + （第5关）第二只
-  dogs = [makeDog(c.firstDogCd, 1)];
-  if (c.dogs > 1) dogs.push(makeDog(c.dog2At, 0.72));
-  lvEl.textContent = level;
+  if (ms > 0 && !tutorialMode) buffs.magnet = Math.max(buffs.magnet || 0, ms * 5 * 60);
+  // 狗：主狗 + （第5关）第二只（教程无狗）
+  dogs = [];
+  if (!tutorialMode) {
+    dogs = [makeDog(c.firstDogCd, 1)];
+    if (c.dogs > 1) dogs.push(makeDog(c.dog2At, 0.72));
+  }
+  lvEl.textContent = tutorialMode ? '教程' : level;
   bestEl.textContent = best;
   last = performance.now();
   spEl.textContent = '1.0x'; scEl.textContent = '0'; comboBox.textContent = '';
@@ -1161,6 +1430,16 @@ upgradeDialog.addEventListener('pointerdown', e => e.stopPropagation());
 document.querySelector('#histCloseBtn').onclick = () => histDialog.close();
 histDialog.addEventListener('click', e => { if (e.target === histDialog) histDialog.close(); });
 histDialog.addEventListener('pointerdown', e => e.stopPropagation());
+// 每日任务
+menuDailyBtn.onclick = () => openDaily();
+document.querySelector('#taskCloseBtn').onclick = () => taskDialog.close();
+taskDialog.addEventListener('click', e => { if (e.target === taskDialog) taskDialog.close(); });
+taskDialog.addEventListener('pointerdown', e => e.stopPropagation());
+// 新手教程入口
+document.querySelector('#tutGoBtn').onclick = () => { hideTutIntro(); tutorialStart(); };
+document.querySelector('#tutSkipBtn').onclick = () => { hideTutIntro(); };
+// 暂停中不允许进入每日任务对话框等（anyDialogOpen 已含 taskDialog）
+DIALOGS.push(taskDialog);
 
 // ===== 生成 =====
 // 单柱：type 'pillar'；夹缝双层：'double'；喷发柱：'erupt'；低扫火球/激光：'sweep'/'laser'
@@ -1444,6 +1723,24 @@ function loop(t) {
   // 跑速推进（关卡封顶）
   score += Math.floor(runSpeed * dt / 2);
   speed = Math.min(c.maxSpeed, speed + 0.012 * dt);
+
+  // 教程推进：按跑动距离切换步骤文案
+  if (tutorialMode) {
+    tutDist += runSpeed * dt;
+    const nextStep = tutDist > 5000 ? 6 : tutDist > 3800 ? 5 : tutDist > 2600 ? 4 : tutDist > 1700 ? 3 : tutDist > 1000 ? 2 : tutDist > 500 ? 1 : 0;
+    if (nextStep > tutStep) {
+      tutStep = nextStep;
+      if (tutStep < TUT_HINTS.length) tutHint.innerHTML = TUT_HINTS[tutStep];
+      if (tutStep === 6) {
+        // 通关：完成教程
+        tutDone = true;
+        saveTutFlag();
+        lastDeath = '';
+        finish();
+        return;
+      }
+    }
+  }
 
   // 速度脉冲（洋流/超光速）：周期加速
   if (c.speedPulse) {
@@ -1788,6 +2085,7 @@ function loop(t) {
 function collectGem(g, pxs, gyy) {
   const c = cfg();
   combo++;
+  runStats.gems++;   // 每日任务：累计吃能量球数
   if (combo > comboMax) comboMax = combo;
   const mult = 1 + Math.floor(combo / 5);
   const gain = Math.round(GEM_VAL[g.type] * mult * (1 + 0.1 * (shopState.passives.gemPlus || 0)) * c.gemMult);
@@ -2555,6 +2853,26 @@ function drawCostumePreview(canvas, costumeId) {
 // ===== 结算 =====
 function finish() {
   run = 0;
+  const tutPass = tutorialMode && lastDeath === '';
+  // 教程模式：不写纪录 / 历史 / 金币，只给完成或失败反馈
+  if (tutorialMode) {
+    tutHint.classList.add('off');
+    finalEl.textContent = tutPass ? '完成！' : score;
+    runCoinsEl.textContent = tutPass ? '' : '+0';
+    if (tutPass) {
+      endTitleEl.textContent = '🎉 教程完成！';
+      endDeathEl.innerHTML = '你已经学会跳跃、二段跳、吃能量球与躲避疯狗。现在去正式关卡大展身手吧！';
+    } else {
+      endTitleEl.textContent = '撞上了';
+      endDeathEl.innerHTML = '没关系，新手都会撞！点击下方「再来一局」再试一次。';
+    }
+    newBestEl.style.display = 'none';
+    newLvBestEl.style.display = 'none';
+    prevBestEl.style.display = 'none';
+    runDetailEl.innerHTML = '生存 ' + Math.floor(gameT / 60) + 's' + (runStats.jumps ? ' · 跳跃 ' + runStats.jumps + ' 次' : '');
+    end.classList.remove('off');
+    return;
+  }
   finalEl.textContent = score;
   runCoinsEl.textContent = '+' + runCoins;
   const c = cfg();
@@ -2576,6 +2894,17 @@ function finish() {
   saveShopState();
   updateBest();
   updateCoinUI();
+  // 每日任务进度（累计型）
+  loadDaily();
+  bumpDaily('runs', 1);
+  bumpDaily('score', score);
+  bumpDaily('coins', runCoins);
+  bumpDaily('pickups', pickupsGot);
+  bumpDaily('gems', runStats.gems);
+  bumpDaily('jumps', runStats.jumps);
+  // 单局峰值型（取本局是否达标）
+  dailyBest('comboMax', comboMax);
+  dailyBest('timeMax', Math.floor(gameT / 60));
   // 追加历史
   history.unshift({
     t: Date.now(), lv: level, lvName: c.title, side,
@@ -2587,6 +2916,7 @@ function finish() {
   if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
   saveHistory();
   // UI
+  prevBestEl.style.display = '';
   newBestEl.style.display = isNewGlobal ? '' : 'none';
   newLvBestEl.style.display = (isNewLv && !isNewGlobal) ? '' : 'none';
   prevBestEl.textContent = prevLv;
