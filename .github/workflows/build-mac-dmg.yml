@@ -1,0 +1,35 @@
+name: Build macOS DMG
+
+# 手动触发：仓库 Actions 页面 → 选本工作流 → Run workflow
+on:
+  workflow_dispatch:
+
+jobs:
+  build-dmg:
+    runs-on: macos-latest   # GitHub 托管的 macOS 构建机
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --include=dev --no-omit
+
+      # 按 package.json 的 mac.target 构建：dmg + zip, arm64 + x64
+      - name: Build macOS packages
+        run: npx electron-builder --mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: neonrun-mac
+          path: |
+            dist/*.dmg
+            dist/*.zip
+          if-no-files-found: error
