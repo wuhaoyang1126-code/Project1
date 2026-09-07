@@ -1,8 +1,10 @@
-const { app, BrowserWindow, Menu, globalShortcut } = require('electron');
+const { app, BrowserWindow, Menu, globalShortcut, ipcMain, screen } = require('electron');
 const path = require('path');
 
+let win = null;
+
 function createWindow() {
-  const win = new BrowserWindow({
+  win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 900,
@@ -11,6 +13,7 @@ function createWindow() {
     autoHideMenuBar: true,
     title: '霓虹跑酷',
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -35,13 +38,56 @@ function createWindow() {
     // 允许方向键/空格正常传给页面；仅拦截刷新类
   });
 
+  // 窗口状态变化（全屏/最大化）推送给渲染进程，设置面板同步显示
+  const pushState = () => {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('neon:window-state', {
+        fullscreen: win.isFullScreen(),
+        maximized: win.isMaximized(),
+      });
+    }
+  };
+  win.on('enter-full-screen', pushState);
+  win.on('leave-full-screen', pushState);
+  win.on('maximize', pushState);
+  win.on('unmaximize', pushState);
+
   return win;
 }
 
+// 窗口控制 IPC：渲染进程设置面板调用
+ipcMain.on('neon:set-window', (event, opts) => {
+  if (!win || win.isDestroyed()) return;
+  if (opts && typeof opts === 'object') {
+    if (opts.fullscreen === true) {
+      win.setFullScreen(true);
+    } else if (opts.fullscreen === false) {
+      win.setFullScreen(false);
+    }
+    if (Number.isFinite(opts.width) && Number.isFinite(opts.height)) {
+      win.setSize(Math.round(opts.width), Math.round(opts.height));
+      // 缩放后确保窗口居中
+      const wa = screen.getPrimaryDisplay().workArea;
+      win.setPosition(
+        wa.x + Math.round((wa.width - opts.width) / 2),
+        wa.y + Math.round((wa.height - opts.height) / 2)
+      );
+    }
+  }
+});
+
+ipcMain.handle('neon:get-window-state', () => {
+  if (!win || win.isDestroyed()) return { fullscreen: false, maximized: false };
+  return {
+    fullscreen: win.isFullScreen(),
+    maximized: win.isMaximized(),
+  };
+});
+
 app.whenReady().then(() => {
-  const win = createWindow();
-  win.webContents.on('context-menu', () => {});
-  win.webContents.on('will-navigate', (e) => e.preventDefault());
+  const w = createWindow();
+  w.webContents.on('context-menu', () => {});
+  w.webContents.on('will-navigate', (e) => e.preventDefault());
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

@@ -119,6 +119,13 @@ dialog button{background:#28135a;color:#fff;border:1px solid #846cff;cursor:poin
 .task-done-tag{color:#5df2b0;font-size:12px}
 /* ===== 教程 ===== */
 .tut-card{border-color:#ffd94a!important;box-shadow:0 0 16px #ffd94a33}
+/* ===== 设置 ===== */
+.set-block{background:#0b0822;border:1px solid #34296a;padding:14px 16px;margin-bottom:12px}
+.set-label{font-size:15px;font-weight:bold;color:#52f5ff;margin-bottom:10px}
+.set-desc{color:#9d93c8;font-size:12px;margin-top:8px}
+.set-block .side-btn{padding:8px 14px}
+.set-block .side-btn.on{border-color:#52f5ff;color:#fff;background:#28135a;box-shadow:0 0 10px #52f5ff33}
+#volSlider{cursor:pointer}
 </style>
 <canvas id="c"></canvas>
 <div class="hud">
@@ -143,6 +150,7 @@ dialog button{background:#28135a;color:#fff;border:1px solid #846cff;cursor:poin
         <button id="menuUpgradeBtn">⚡ 被动升级</button>
         <button id="menuDailyBtn">📅 每日任务</button>
         <button id="menuHistBtn">📜 挑战历史</button>
+        <button id="menuSetBtn">⚙ 设置</button>
       </div>
     </div>
     <div class="lv-grid" id="lvGrid"></div>
@@ -276,6 +284,42 @@ dialog button{background:#28135a;color:#fff;border:1px solid #846cff;cursor:poin
     </div>
   </div>
 </dialog>
+<dialog id="setDialog" aria-labelledby="setTitle">
+  <div class="shop-shell">
+    <header class="shop-head">
+      <div><h1 id="setTitle" tabindex="-1">⚙ 游戏设置</h1><small>窗口与声音选项即时生效并自动保存</small></div>
+      <button id="setCloseBtn" class="shop-close" aria-label="关闭设置">×</button>
+    </header>
+    <div class="dialog-main">
+      <div class="set-block">
+        <div class="set-label">🖥 窗口大小</div>
+        <div class="row" id="winSizeRow" style="justify-content:flex-start"></div>
+        <div class="set-desc">更改后窗口立即调整并居中</div>
+      </div>
+      <div class="set-block">
+        <div class="set-label">🖵 显示模式</div>
+        <div class="row" id="fsRow" style="justify-content:flex-start">
+          <button id="fsBtn" class="side-btn">窗口模式</button>
+        </div>
+        <div class="set-desc" id="fsDesc">全屏模式下按 Esc 可退出全屏</div>
+      </div>
+      <div class="set-block">
+        <div class="set-label">🔊 音效音量</div>
+        <div class="row" id="volRow" style="justify-content:flex-start;gap:12px">
+          <input type="range" id="volSlider" min="0" max="100" value="60" style="flex:1;max-width:280px;accent-color:#52f5ff">
+          <b id="volVal" style="color:#ffd94a;min-width:40px">60%</b>
+        </div>
+        <div class="set-desc">合成音效：跳跃 / 吃球 / 碰撞 / 道具 / 按钮</div>
+      </div>
+      <div class="set-block">
+        <div class="row" style="justify-content:flex-start">
+          <button id="muteBtn" class="side-btn">🔇 静音：关</button>
+          <button id="sfxTestBtn" class="side-btn">▶ 试听</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</dialog>
 <script>
 (function () {
 const c = document.querySelector('#c');
@@ -298,6 +342,7 @@ const endShopBtn = document.querySelector('#endShopBtn');
 const menuItemsBtn = document.querySelector('#menuItemsBtn');
 const menuUpgradeBtn = document.querySelector('#menuUpgradeBtn');
 const menuHistBtn = document.querySelector('#menuHistBtn');
+const menuSetBtn = document.querySelector('#menuSetBtn');
 const lvGrid = document.querySelector('#lvGrid');
 const startBtn = document.querySelector('#startBtn');
 const loadoutHint = document.querySelector('#loadoutHint');
@@ -324,6 +369,14 @@ const taskDialog = document.querySelector('#taskDialog');
 const taskList = document.querySelector('#taskList');
 const taskCoins = document.querySelector('#taskCoins');
 const taskRefresh = document.querySelector('#taskRefresh');
+const setDialog = document.querySelector('#setDialog');
+const winSizeRow = document.querySelector('#winSizeRow');
+const fsBtn = document.querySelector('#fsBtn');
+const fsDesc = document.querySelector('#fsDesc');
+const volSlider = document.querySelector('#volSlider');
+const volVal = document.querySelector('#volVal');
+const muteBtn = document.querySelector('#muteBtn');
+const sfxTestBtn = document.querySelector('#sfxTestBtn');
 const tutIntro = document.querySelector('#tutIntro');
 const tutHint = document.querySelector('#tutHint');
 // 结算面板元素
@@ -620,6 +673,102 @@ let runCoins = 0, pendingCoins = 0, shopState, shopStorageOK = true, shopOpener 
 const gradCache = { key: '', sky: null };
 // HUD 文本缓存（sp/combo 内容未变化时不写 DOM）
 let lastSpTxt = '', lastComboHtml = '';
+// ===== 设置 =====
+const SETTINGS_KEY = 'neon_settings_v1';
+// 窗口大小三档预设（medium 为默认 1280x800）
+const WINDOW_PRESETS = [
+  { id: 'small', label: '小窗', w: 960, h: 600 },
+  { id: 'medium', label: '中窗', w: 1280, h: 800 },
+  { id: 'large', label: '大窗', w: 1600, h: 900 }
+];
+let settings = { sfx: 0.6, muted: false, winSize: 'medium', fullscreen: false };
+function loadSettings() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
+    if (raw && typeof raw === 'object') {
+      settings = {
+        sfx: Number.isFinite(+raw.sfx) && +raw.sfx >= 0 && +raw.sfx <= 1 ? +raw.sfx : 0.6,
+        muted: !!raw.muted,
+        winSize: WINDOW_PRESETS.some(p => p.id === raw.winSize) ? raw.winSize : 'medium',
+        fullscreen: !!raw.fullscreen
+      };
+    }
+  } catch (e) { /* 保持默认 */ }
+}
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {}
+}
+// 应用窗口设置（首次启动与设置面板变更时）
+function applyWindowSettings() {
+  if (!window.neonAPI) return;
+  const p = WINDOW_PRESETS.find(x => x.id === settings.winSize) || WINDOW_PRESETS[1];
+  if (settings.fullscreen) {
+    window.neonAPI.setWindow({ fullscreen: true });
+  } else {
+    window.neonAPI.setWindow({ fullscreen: false, width: p.w, height: p.h });
+  }
+}
+// ===== 合成音效（Web Audio，无需音频文件）=====
+let audioCtx = null, sfxGain = null, sfxReady = false;
+function ensureAudio() {
+  if (!sfxReady) {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      sfxGain = audioCtx.createGain();
+      sfxGain.connect(audioCtx.destination);
+      sfxReady = true;
+    } catch (e) { sfxReady = false; }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  if (sfxGain && !settings.muted) sfxGain.gain.value = settings.sfx;
+}
+function tone(freq0, freq1, dur, type, vol, delay = 0) {
+  if (!sfxReady || settings.muted) return;
+  const t0 = audioCtx.currentTime + delay;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(freq0, t0);
+  if (freq1 && freq1 !== freq0) o.frequency.exponentialRampToValueAtTime(Math.max(1, freq1), t0 + dur);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.001, vol), t0 + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g); g.connect(sfxGain);
+  o.start(t0); o.stop(t0 + dur + 0.02);
+}
+function noiseBurst(dur, vol, delay = 0) {
+  if (!sfxReady || settings.muted) return;
+  const t0 = audioCtx.currentTime + delay;
+  const n = Math.floor(audioCtx.sampleRate * dur);
+  const buf = audioCtx.createBuffer(1, n, audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  const g = audioCtx.createGain();
+  g.gain.value = vol;
+  const f = audioCtx.createBiquadFilter();
+  f.type = 'lowpass'; f.frequency.value = 900;
+  src.connect(f); f.connect(g); g.connect(sfxGain);
+  src.start(t0);
+}
+function playSfx(name, comboMult = 1) {
+  ensureAudio();
+  if (!sfxReady || settings.muted) return;
+  switch (name) {
+    case 'jump':   tone(300, 560, 0.09, 'square', 0.05); break;
+    case 'jump2':  tone(430, 760, 0.1, 'square', 0.05); break;
+    case 'gem':    tone(880 * Math.min(3, comboMult), 0, 0.07, 'sine', 0.09); tone(1320 * Math.min(3, comboMult), 0, 0.1, 'sine', 0.06, 0.03); break;
+    case 'shield': tone(680, 300, 0.14, 'triangle', 0.09); break;
+    case 'pickup': tone(640, 0, 0.07, 'square', 0.06); tone(960, 0, 0.09, 'square', 0.06, 0.06); break;
+    case 'hit':    noiseBurst(0.18, 0.16); tone(160, 60, 0.2, 'sawtooth', 0.1); break;
+    case 'dog':    tone(240, 90, 0.28, 'sawtooth', 0.12); break;
+    case 'revive': tone(520, 0, 0.08, 'triangle', 0.08); tone(780, 0, 0.08, 'triangle', 0.08, 0.07); tone(1040, 0, 0.12, 'triangle', 0.08, 0.14); break;
+    case 'click':  tone(320, 0, 0.045, 'square', 0.035); break;
+    case 'start':  tone(392, 0, 0.09, 'square', 0.05); tone(523, 0, 0.09, 'square', 0.05, 0.08); tone(659, 0, 0.14, 'square', 0.05, 0.16); break;
+    case 'finish': tone(523, 0, 0.1, 'triangle', 0.08); tone(659, 0, 0.1, 'triangle', 0.08, 0.09); tone(784, 0, 0.1, 'triangle', 0.08, 0.18); tone(1046, 0, 0.2, 'triangle', 0.08, 0.27); break;
+  }
+}
 // 道具运行态
 let buffs = {};          // { shield, magnet, slowmo, revive, double, invincible } 时间(帧)/次数
 let loadout = [];        // 本局携带的主动道具 id[]
@@ -814,6 +963,77 @@ function openDaily() {
   taskDialog.showModal();
   document.querySelector('#taskTitle').focus();
 }
+// ===== 设置面板 =====
+function renderSetPanel() {
+  // 窗口尺寸三档
+  winSizeRow.textContent = '';
+  WINDOW_PRESETS.forEach(p => {
+    const b = document.createElement('button');
+    b.className = 'side-btn' + (settings.winSize === p.id ? ' on' : '');
+    b.textContent = p.label + ' ' + p.w + '×' + p.h;
+    b.onclick = () => setWinSize(p.id);
+    winSizeRow.append(b);
+  });
+  // 全屏/窗口按钮与音量/静音状态
+  fsBtn.textContent = settings.fullscreen ? '🖵 全屏模式' : '🖵 窗口模式';
+  fsBtn.classList.toggle('on', settings.fullscreen);
+  fsDesc.textContent = settings.fullscreen ? '当前为全屏模式，Esc 可退出' : '当前为窗口模式，可随时切换全屏';
+  volSlider.value = Math.round(settings.sfx * 100);
+  volVal.textContent = Math.round(settings.sfx * 100) + '%';
+  muteBtn.textContent = settings.muted ? '🔇 静音：开' : '🔇 静音：关';
+  muteBtn.classList.toggle('on', settings.muted);
+}
+function openSetPanel() {
+  renderSetPanel();
+  setDialog.showModal();
+  document.querySelector('#setTitle').focus();
+  // 同步真实窗口全屏状态（可能被系统快捷键改变）
+  if (window.neonAPI && window.neonAPI.getWindowState) {
+    window.neonAPI.getWindowState().then(s => {
+      if (s && s.fullscreen !== settings.fullscreen) {
+        settings.fullscreen = s.fullscreen;
+        renderSetPanel();
+      }
+    }).catch(() => {});
+  }
+}
+function setWinSize(id) {
+  const p = WINDOW_PRESETS.find(x => x.id === id);
+  if (!p) return;
+  settings.winSize = id;
+  saveSettings();
+  // 切回窗口模式（若在全屏则先退出）
+  settings.fullscreen = false;
+  if (window.neonAPI) window.neonAPI.setWindow({ fullscreen: false, width: p.w, height: p.h });
+  renderSetPanel();
+}
+function toggleFullscreen() {
+  settings.fullscreen = !settings.fullscreen;
+  saveSettings();
+  if (window.neonAPI) {
+    if (settings.fullscreen) window.neonAPI.setWindow({ fullscreen: true });
+    else {
+      const p = WINDOW_PRESETS.find(x => x.id === settings.winSize) || WINDOW_PRESETS[1];
+      window.neonAPI.setWindow({ fullscreen: false, width: p.w, height: p.h });
+    }
+  }
+  renderSetPanel();
+}
+function setVolume(v) {
+  settings.sfx = Math.max(0, Math.min(1, v));
+  if (v > 0) settings.muted = false;
+  saveSettings();
+  volVal.textContent = Math.round(v * 100) + '%';
+  muteBtn.textContent = settings.muted ? '🔇 静音：开' : '🔇 静音：关';
+  muteBtn.classList.toggle('on', settings.muted);
+  if (sfxGain) sfxGain.gain.value = settings.muted ? 0 : settings.sfx;
+}
+function toggleMute() {
+  settings.muted = !settings.muted;
+  saveSettings();
+  renderSetPanel();
+  if (sfxGain) sfxGain.gain.value = settings.muted ? 0 : settings.sfx;
+}
 // ===== 新手教程 =====
 function loadTutFlag() {
   try { tutDone = localStorage.getItem(TUT_KEY) === '1'; } catch (e) { tutDone = false; }
@@ -938,7 +1158,10 @@ loadShopState();
 loadHistory();
 loadTutFlag();
 loadDaily();
+loadSettings();
 updateCoinUI();
+// 按存档应用窗口大小/全屏（仅打包环境有 neonAPI）
+if (window.neonAPI) applyWindowSettings();
 
 // 太空背景预生成星点（随窗口尺寸重建，避免每帧随机分配）
 function buildSpaceStars() {
@@ -973,6 +1196,7 @@ function gy() { return H * GY_RATIO; }
 
 // ===== 输入 =====
 addEventListener('keydown', e => {
+  ensureAudio();   // 键盘操作同样解锁音频
   if (anyDialogOpen()) return;
   if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
     e.preventDefault();
@@ -991,7 +1215,13 @@ addEventListener('keyup', e => {
   if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') jumpEnd();
 });
 addEventListener('pointerdown', e => {
+  ensureAudio();   // 首次交互解锁音频（浏览器自动播放策略）
   if (!anyDialogOpen() && run && !paused) jumpStart();
+});
+// 按钮点击音（捕获阶段，游戏内点击跳跃不触发）
+addEventListener('click', e => {
+  const b = e.target && e.target.closest ? e.target.closest('button') : null;
+  if (b && !b.disabled) playSfx('click');
 });
 
 // ===== 跳跃 =====
@@ -1003,6 +1233,7 @@ function jumpStart() {
   if (jumpCount < 2) {
     jumpCount++;
     runStats.jumps++;   // 每日任务：累计起跳次数（一段/二段都计）
+    playSfx(jumpCount === 1 ? 'jump' : 'jump2');
     holdJump = 1;
     jumpHoldFrames = 0;
     pvy = (jumpCount === 1 ? JV1 : JV2) * (1 + 0.03 * (shopState.passives.jumpPlus || 0));
@@ -1396,6 +1627,7 @@ function start() {
   bestEl.textContent = best;
   last = performance.now();
   spEl.textContent = '1.0x'; scEl.textContent = '0'; comboBox.textContent = '';
+  if (!tutorialMode) playSfx('start');
   requestAnimationFrame(loop);
 }
 function makeDog(firstCd, scale) {
@@ -1435,11 +1667,20 @@ menuDailyBtn.onclick = () => openDaily();
 document.querySelector('#taskCloseBtn').onclick = () => taskDialog.close();
 taskDialog.addEventListener('click', e => { if (e.target === taskDialog) taskDialog.close(); });
 taskDialog.addEventListener('pointerdown', e => e.stopPropagation());
+// 设置
+menuSetBtn.onclick = () => openSetPanel();
+document.querySelector('#setCloseBtn').onclick = () => setDialog.close();
+setDialog.addEventListener('click', e => { if (e.target === setDialog) setDialog.close(); });
+setDialog.addEventListener('pointerdown', e => e.stopPropagation());
+fsBtn.onclick = toggleFullscreen;
+volSlider.addEventListener('input', () => setVolume(+volSlider.value / 100));
+muteBtn.onclick = toggleMute;
+sfxTestBtn.onclick = () => { ensureAudio(); playSfx('finish'); };
 // 新手教程入口
 document.querySelector('#tutGoBtn').onclick = () => { hideTutIntro(); tutorialStart(); };
 document.querySelector('#tutSkipBtn').onclick = () => { hideTutIntro(); };
-// 暂停中不允许进入每日任务对话框等（anyDialogOpen 已含 taskDialog）
-DIALOGS.push(taskDialog);
+// 暂停中不允许进入对话框等（anyDialogOpen 已含各 dialog）
+DIALOGS.push(taskDialog, setDialog);
 
 // ===== 生成 =====
 // 单柱：type 'pillar'；夹缝双层：'double'；喷发柱：'erupt'；低扫火球/激光：'sweep'/'laser'
@@ -1571,6 +1812,7 @@ function updateDogs(dt) {
       dog.cd -= dt;
       if (dog.cd <= 0) {
         dog.mode = 'windup'; dog.wt = DOG_WINDUP;
+        playSfx('dog');
         addFloat(px() - side * 70, gy() - 150, dog.scale < 1 ? '❗❗' : '❗', '#ff7b2e', 0.9);
         spawnRing(px() - side * 70, gy() - 20, '#ff7b2e');
       }
@@ -1611,6 +1853,7 @@ function hitByDog() {
   if (buffs.invincible > 0 || buffs.shield > 0) {
     if (buffs.shield > 0) {
       buffs.shield = 0;
+      playSfx('shield');
       spawnBurst(px(), gy() - py - 20, '#4fe3ff', 20, 4);
       addFloat(px(), gy() - py - 60, '护盾抵挡！', '#4fe3ff', 1);
       setInvincible(1.5);
@@ -1620,6 +1863,7 @@ function hitByDog() {
   if (buffs.revive > 0) {
     buffs.revive = 0;
     setInvincible(1.5);
+    playSfx('revive');
     spawnBurst(px(), gy() - py - 20, '#ffd94a', 26, 5);
     addFloat(px(), gy() - py - 70, '复活芯片！', '#ffd94a', 1.4);
     combo = 0; comboBox.textContent = '';
@@ -1628,6 +1872,7 @@ function hitByDog() {
   }
   lastDeath = 'dog';
   flash = 1;
+  playSfx('hit');
   spawnBurst(px(), gy() - py - 20, '#ff7b2e', 26, 4.5);
   spawnRing(px(), gy() - py - 20, '#ff7b2e');
   combo = 0; comboBox.textContent = '';
@@ -1819,6 +2064,7 @@ function loop(t) {
     if (buffs.invincible > 0 || buffs.shield > 0) {
       if (buffs.shield > 0) {
         buffs.shield = 0;
+        playSfx('shield');
         spawnBurst(pxs, ground - py - 24, '#4fe3ff', 18, 4);
         addFloat(pxs, ground - py - 80, '护盾抵挡！', '#4fe3ff', 1);
       }
@@ -1826,6 +2072,7 @@ function loop(t) {
     } else if (buffs.revive > 0) {
       buffs.revive = 0;
       buffs.invincible = 1.5 * 60;
+      playSfx('revive');
       spawnBurst(pxs, ground - py - 24, '#ffd94a', 24, 5);
       addFloat(pxs, ground - py - 80, '复活芯片！', '#ffd94a', 1.4);
       flash = 0.6;
@@ -1833,6 +2080,7 @@ function loop(t) {
       lastDeath = 'pillar';
       dying = 1; dieT = 0;
       flash = 1;
+      playSfx('hit');
       spawnBurst(pxs, ground - py - 24, c.theme.danger, 22, 4);
       spawnRing(pxs, ground - py - 24, c.theme.danger);
       combo = 0; comboBox.textContent = '';
@@ -1854,6 +2102,7 @@ function loop(t) {
         if (buffs.invincible > 0 || buffs.shield > 0) {
           if (buffs.shield > 0) {
             buffs.shield = 0;
+            playSfx('shield');
             spawnBurst(pxs, ground - py - 24, '#4fe3ff', 18, 4);
             addFloat(pxs, ground - py - 80, '护盾抵挡！', '#4fe3ff', 1);
           }
@@ -1861,12 +2110,14 @@ function loop(t) {
         } else if (buffs.revive > 0) {
           buffs.revive = 0;
           buffs.invincible = 1.5 * 60;
+          playSfx('revive');
           spawnBurst(pxs, ground - py - 24, '#ffd94a', 24, 5);
           addFloat(pxs, ground - py - 80, '复活芯片！', '#ffd94a', 1.4);
           flash = 0.6;
         } else {
           lastDeath = laser ? 'laser' : 'pillar';
           dying = 1; dieT = 0; flash = 1;
+          playSfx('hit');
           const dcol = laser ? '#9d6bff' : s2.type === 'mine' ? '#2ee6ff' : s2.type === 'meteor' ? '#ff9c3a' : '#ff8c42';
           spawnBurst(pxs, ground - py - 24, dcol, 18, 4);
           spawnRing(pxs, ground - py - 24, dcol);
@@ -2086,6 +2337,7 @@ function collectGem(g, pxs, gyy) {
   const c = cfg();
   combo++;
   runStats.gems++;   // 每日任务：累计吃能量球数
+  playSfx('gem', 1 + Math.floor(combo / 10));   // 连击越高音调越高
   if (combo > comboMax) comboMax = combo;
   const mult = 1 + Math.floor(combo / 5);
   const gain = Math.round(GEM_VAL[g.type] * mult * (1 + 0.1 * (shopState.passives.gemPlus || 0)) * c.gemMult);
@@ -2112,6 +2364,7 @@ function collectPickup(p, pxs, foot, pyy) {
   const id = p.id;
   pickupsGot++;
   const col = PICKUP_COLOR[id] || '#ffd94a';
+  playSfx('pickup');
   // 即时生效：护盾为次数型（已有则叠 1s 无敌避免浪费），其余延长时间
   if (id === 'shield') {
     if (buffs.shield > 0) setInvincible(1);
@@ -2862,6 +3115,7 @@ function finish() {
     if (tutPass) {
       endTitleEl.textContent = '🎉 教程完成！';
       endDeathEl.innerHTML = '你已经学会跳跃、二段跳、吃能量球与躲避疯狗。现在去正式关卡大展身手吧！';
+      playSfx('finish');
     } else {
       endTitleEl.textContent = '撞上了';
       endDeathEl.innerHTML = '没关系，新手都会撞！点击下方「再来一局」再试一次。';
