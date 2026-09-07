@@ -1601,12 +1601,14 @@ function loop(t) {
   }
   gems = gems.filter(g => side === 1 ? g.x > -80 : g.x < W + 80);
   if (!dying) {
+    // 吃金币判定：以角色身体中心为基准（身体中心≈脚底上方 55px），
+    // 纵向 ±52 覆盖从脚到躯干几乎整个身体，碰到身子即可吃到，不再要求脚尖对齐
+    const bodyC = (ground - py) - 55;
     for (let i = gems.length - 1; i >= 0; i--) {
       const g = gems[i];
       const gyy = ground - GEM_OFF[g.type];
-      const foot = ground - py;
-      if (g.x > pxs - 26 && g.x < pxs + 26 && Math.abs(foot - gyy) < 42) {
-        collectGem(g, pxs, foot, gyy);
+      if (g.x > pxs - 30 && g.x < pxs + 30 && Math.abs(bodyC - gyy) < 52) {
+        collectGem(g, pxs, gyy);
         gems.splice(i, 1);
       }
     }
@@ -1783,7 +1785,7 @@ function loop(t) {
 }
 
 // 局内金币已在顶部状态区声明，收集时不落盘，局末统一入账
-function collectGem(g, pxs, foot, gyy) {
+function collectGem(g, pxs, gyy) {
   const c = cfg();
   combo++;
   if (combo > comboMax) comboMax = combo;
