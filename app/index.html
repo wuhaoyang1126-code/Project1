@@ -280,6 +280,16 @@ const histDialog = document.querySelector('#histDialog');
 const histStats = document.querySelector('#histStats');
 const histFilter = document.querySelector('#histFilter');
 const histList = document.querySelector('#histList');
+// 结算面板元素
+const finalEl = document.querySelector('#final');
+const runCoinsEl = document.querySelector('#runCoins');
+const endCoinsEl = document.querySelector('#endCoins');
+const newBestEl = document.querySelector('#newBest');
+const newLvBestEl = document.querySelector('#newLvBest');
+const prevBestEl = document.querySelector('#prevBest');
+const endDeathEl = document.querySelector('#endDeath');
+const runDetailEl = document.querySelector('#runDetail');
+const endTitleEl = document.querySelector('#endTitle');
 
 // ===== 常量 / 状态 =====
 const SHOP_KEY = 'neon_shop_v1';
@@ -531,7 +541,11 @@ let score = 0, best = 0, speed, wait, obs = [], gems = [], parts = [], floats = 
 let sweeps = [];   // 扁障碍（低扫火球 / 激光）
 let py = 0, pvy = 0, jumpCount = 0, holdJump = 0;
 let combo = 0, comboMax = 0, last, gameT = 0, flash = 0, dying = 0, dieT = 0;
-let runCoins = 0, shopState, shopStorageOK = true, shopOpener = null;
+let runCoins = 0, pendingCoins = 0, shopState, shopStorageOK = true, shopOpener = null;
+// 主题天空渐变缓存（每次绘制复用，避免每帧创建渐变对象）
+const gradCache = { key: '', sky: null };
+// HUD 文本缓存（sp/combo 内容未变化时不写 DOM）
+let lastSpTxt = '', lastComboHtml = '';
 // 道具运行态
 let buffs = {};          // { shield, magnet, slowmo, revive, double, invincible } 时间(帧)/次数
 let loadout = [];        // 本局携带的主动道具 id[]
@@ -619,13 +633,16 @@ function loadHistory() {
 function saveHistory() {
   try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch (e) {}
 }
+let menuCoinEl = null;
 function updateCoinUI() {
-  coinHud.textContent = shopState.coins;
-  shopCoins.textContent = shopState.coins;
-  upgradeCoins.textContent = shopState.coins;
-  itemCoins.textContent = shopState.coins;
-  menuShopBtn.querySelector('.coin').textContent = shopState.coins;
-  document.querySelector('#endCoins').textContent = shopState.coins;
+  const shown = shopState.coins + (run ? pendingCoins : 0);
+  coinHud.textContent = shown;
+  shopCoins.textContent = shown;
+  upgradeCoins.textContent = shown;
+  itemCoins.textContent = shown;
+  if (!menuCoinEl) menuCoinEl = menuShopBtn.querySelector('.coin');
+  menuCoinEl.textContent = shown;
+  endCoinsEl.textContent = shopState.coins;
 }
 function setShopMessage(message, error = false) {
   shopStatus.textContent = message;
@@ -709,6 +726,7 @@ function buildSpaceStars() {
 }
 function size() {
   W = innerWidth; H = innerHeight;
+  gradCache.key = '';
   const ratio = Math.min(devicePixelRatio || 1, 2);   // 4K/高分屏钳制，保证帧率
   c.width = W * ratio;
   c.height = H * ratio;
@@ -859,13 +877,23 @@ const DIALOGS = [shopDialog, itemDialog, upgradeDialog, histDialog];
 function anyDialogOpen() { return DIALOGS.some(d => d.open); }
 function cfg() { return LEVELS[level - 1]; }
 function lvName(lv) { return LEVELS[lv - 1].title; }
+// 局内金币入账：仅在结算/重开/退出时落盘一次
+function bankPendingCoins() {
+  if (pendingCoins > 0) {
+    shopState.coins = Math.min(Number.MAX_SAFE_INTEGER, shopState.coins + pendingCoins);
+    pendingCoins = 0;
+    saveShopState();
+  }
+}
 function menu() {
+  bankPendingCoins();
   run = 0; paused = 0;
   end.classList.add('off'); pauseLayer.classList.add('off');
   menuEl.classList.remove('off');
   hudItems.textContent = ''; hudBuffs.textContent = '';
   updateBest();
   bestEl.textContent = best;
+  updateCoinUI();
   renderLevelCards();
   renderSideBtns();
   renderLoadoutHint();
@@ -878,6 +906,7 @@ function togglePause() {
   if (!paused) { last = performance.now(); requestAnimationFrame(loop); }
 }
 function restart() {
+  bankPendingCoins();
   if (paused) { paused = 0; pauseLayer.classList.add('off'); }
   start();
 }
@@ -1063,7 +1092,7 @@ function renderHistList(filterLv) {
 function start() {
   menuEl.classList.add('off'); end.classList.add('off');
   run = 1; paused = 0;
-  score = 0; runCoins = 0; speed = 6 + (shopState.passives.startSpeed || 0); wait = 48;
+  score = 0; runCoins = 0; pendingCoins = 0; speed = 6 + (shopState.passives.startSpeed || 0); wait = 48;
   obs = []; gems = []; parts = []; floats = []; ghost = []; sweeps = [];
   py = 0; pvy = 0; jumpCount = 0; holdJump = 0; combo = 0; comboMax = 0;
   gameT = 0; flash = 0; dying = 0; dieT = 0; jumpHoldFrames = 0;
@@ -1383,14 +1412,16 @@ function drawDog(dog) {
 // ===== 主循环 =====
 function tickBuffs(dt) {
   // 护盾/复活是次数型，其余是帧数型
+  let changed = false;
   ['invincible', 'magnet', 'slowmo', 'double', 'boost', 'rocket', 'net'].forEach(k => {
     if (buffs[k] > 0) {
       buffs[k] = Math.max(0, buffs[k] - dt);
-      if (buffs[k] === 0) spawnBurst(px(), gy() - py - 30, '#846cff', 8, 2);
+      if (buffs[k] === 0) { spawnBurst(px(), gy() - py - 30, '#846cff', 8, 2); changed = true; }
     }
   });
   renderHudBuffs();
-  renderHudItems();
+  // 仅在 buff 状态变化时重建道具栏（按钮激活/冷却样式）
+  if (changed) renderHudItems();
 }
 function effSpeed() {
   let s = speed;
@@ -1557,8 +1588,8 @@ function loop(t) {
     if (dieT > 4) { finish(); return; }
   }
 
-  // 能量球：移动 + 收集（磁铁时自动飞向玩家）
-  gems.forEach(g => { g.px = g.x; g.x -= side * runSpeed * dt; });
+  // 能量球：移动 + 收集（磁铁时自动飞向玩家；收集只看当前 x，无需记录上一帧 px）
+  gems.forEach(g => { g.x -= side * runSpeed * dt; });
   if (buffs.magnet > 0) {
     for (const g of gems) {
       const gyy = ground - GEM_OFF[g.type];
@@ -1581,8 +1612,8 @@ function loop(t) {
     }
   }
 
-  // 拾取道具盒：移动 + 收集
-  pickups.forEach(p => { p.px = p.x; p.x -= side * runSpeed * dt; });
+  // 拾取道具盒：移动 + 收集（同样只看当前 x）
+  pickups.forEach(p => { p.x -= side * runSpeed * dt; });
   pickups = pickups.filter(p => side === 1 ? p.x > -90 : p.x < W + 90);
   if (!dying) {
     for (let i = pickups.length - 1; i >= 0; i--) {
@@ -1742,13 +1773,16 @@ function loop(t) {
   }
   x.globalAlpha = 1;
 
-  // HUD
+  // HUD（sp/combo 仅在文本变化时写 DOM）
   scEl.textContent = score;
-  spEl.textContent = (runSpeed / 6).toFixed(1) + 'x' + (buffs.slowmo > 0 ? ' <span style="color:#9adcff">慢</span>' : '');
-  comboBox.innerHTML = combo >= 2 ? '连击 <b style="color:#ffd94a">' + combo + '</b>' + (combo >= 5 ? ' · 倍率 ×' + (1 + Math.floor(combo / 5)) : '') : '';
+  const spTxt = (runSpeed / 6).toFixed(1) + 'x' + (buffs.slowmo > 0 ? ' <span style="color:#9adcff">慢</span>' : '');
+  if (spTxt !== lastSpTxt) { spEl.innerHTML = spTxt; lastSpTxt = spTxt; }
+  const comboHtml = combo >= 2 ? '连击 <b style="color:#ffd94a">' + combo + '</b>' + (combo >= 5 ? ' · 倍率 ×' + (1 + Math.floor(combo / 5)) : '') : '';
+  if (comboHtml !== lastComboHtml) { comboBox.innerHTML = comboHtml; lastComboHtml = comboHtml; }
   requestAnimationFrame(loop);
 }
 
+// 局内金币已在顶部状态区声明，收集时不落盘，局末统一入账
 function collectGem(g, pxs, foot, gyy) {
   const c = cfg();
   combo++;
@@ -1758,11 +1792,9 @@ function collectGem(g, pxs, foot, gyy) {
   const coinMult = (1 + 0.15 * (shopState.passives.coinMult || 0)) * c.coinMult * (buffs.double > 0 ? 2 : 1);
   const coinGain = Math.max(1, Math.round(GEM_COIN[g.type] * coinMult));
   score += gain;
-  const next = { ...shopState, coins: Math.min(Number.MAX_SAFE_INTEGER, shopState.coins + coinGain) };
-  shopState = next;
+  pendingCoins += coinGain;
   runCoins += coinGain;
-  if (!saveShopState(next)) shopStorageOK = false;
-  updateCoinUI();
+  updateCoinUI();   // 纯 DOM 文本更新，不写 localStorage
   const col = c.gems[g.type] || '#4fe3ff';
   spawnBurst(pxs, gyy, col, 12, 3.2);
   addFloat(pxs, gyy - 16, '+' + gain + (mult > 1 ? ' ×' + mult : '') + '分 · +' + coinGain + '金币', col, 1);
@@ -1795,12 +1827,20 @@ function collectPickup(p, pxs, foot, pyy) {
 }
 
 // ===== 主题化渲染 =====
+function skyGradient() {
+  const th = cfg().theme;
+  if (gradCache.key !== th.skyTop + th.skyBot) {
+    const g = x.createLinearGradient(0, 0, 0, gy());
+    g.addColorStop(0, th.skyTop);
+    g.addColorStop(1, th.skyBot);
+    gradCache.sky = g;
+    gradCache.key = th.skyTop + th.skyBot;
+  }
+  return gradCache.sky;
+}
 function drawBackground(c, t) {
   const th = c.theme;
-  const grad = x.createLinearGradient(0, 0, 0, gy());
-  grad.addColorStop(0, th.skyTop);
-  grad.addColorStop(1, th.skyBot);
-  x.fillStyle = grad;
+  x.fillStyle = skyGradient();
   x.fillRect(0, 0, W, H);
   // 视差装饰层（纯 canvas）
   const kind = c.decor.kind;
@@ -2257,21 +2297,33 @@ function renderHudItems() {
     hudItems.append(b);
   });
 }
-function renderHudBuffs() {
-  hudBuffs.textContent = '';
+// 每帧文本刷新用：只更新既有行，结构变化才重建 DOM
+let lastBuffsKey = '';
+function renderHudBuffs(force = false) {
   const rows = [];
-  if (buffs.shield > 0) rows.push(['护盾', '#4fe3ff']);
-  if (buffs.invincible > 0) rows.push(['无敌 ' + Math.ceil(buffs.invincible / 60) + 's', '#fff3ad']);
-  if (buffs.magnet > 0) rows.push(['磁铁 ' + Math.ceil(buffs.magnet / 60) + 's', '#ff8c42']);
-  if (buffs.slowmo > 0) rows.push(['慢动作 ' + Math.ceil(buffs.slowmo / 60) + 's', '#9adcff']);
-  if (buffs.double > 0) rows.push(['金币×2 ' + Math.ceil(buffs.double / 60) + 's', '#ffd94a']);
-  if (buffs.boost > 0) rows.push(['冲刺 ' + Math.ceil(buffs.boost / 60) + 's', '#52f5ff']);
-  if (buffs.rocket > 0) rows.push(['火箭 ' + Math.ceil(buffs.rocket / 60) + 's', '#ff8c42']);
-  if (buffs.net > 0) rows.push(['冰封狗 ' + Math.ceil(buffs.net / 60) + 's', '#9adcff']);
-  if (pulse.active) rows.push(['脉冲中', pulse.color || '#fff']);
-  if (dust.on) rows.push(['🌪 沙暴中', '#e8c07a']);
-  if (buffs.revive > 0) rows.push(['复活 ×1', '#ffd94a']);
-  rows.forEach(([txt, col]) => {
+  if (buffs.shield > 0) rows.push(['shield', '护盾', '#4fe3ff', '']);
+  if (buffs.invincible > 0) rows.push(['inv', '无敌 ' + Math.ceil(buffs.invincible / 60) + 's', '#fff3ad', '']);
+  if (buffs.magnet > 0) rows.push(['magnet', '磁铁 ' + Math.ceil(buffs.magnet / 60) + 's', '#ff8c42', '']);
+  if (buffs.slowmo > 0) rows.push(['slowmo', '慢动作 ' + Math.ceil(buffs.slowmo / 60) + 's', '#9adcff', '']);
+  if (buffs.double > 0) rows.push(['double', '金币×2 ' + Math.ceil(buffs.double / 60) + 's', '#ffd94a', '']);
+  if (buffs.boost > 0) rows.push(['boost', '冲刺 ' + Math.ceil(buffs.boost / 60) + 's', '#52f5ff', '']);
+  if (buffs.rocket > 0) rows.push(['rocket', '火箭 ' + Math.ceil(buffs.rocket / 60) + 's', '#ff8c42', '']);
+  if (buffs.net > 0) rows.push(['net', '冰封狗 ' + Math.ceil(buffs.net / 60) + 's', '#9adcff', '']);
+  if (pulse.active) rows.push(['pulse', '脉冲中', pulse.color || '#fff', '']);
+  if (dust.on) rows.push(['dust', '🌪 沙暴中', '#e8c07a', '']);
+  if (buffs.revive > 0) rows.push(['revive', '复活 ×1', '#ffd94a', '']);
+  const key = rows.map(r => r[0] + (r[1].length > 6 ? Math.ceil((buffs[r[0]] || 0) / 60) : '')).join('|');
+  // 结构变化（某 buff 起止 / 秒级数字变化）时重建；否则只更新文本
+  const rebuild = force || key !== lastBuffsKey;
+  lastBuffsKey = key;
+  if (!rebuild) return;
+  // 若活跃集合未变（仅秒数变了），逐行更新文本，避免整体重建
+  if (hudBuffs.childElementCount === rows.length) {
+    [...hudBuffs.children].forEach((d, i) => { d.lastChild.textContent = rows[i][1]; });
+    return;
+  }
+  hudBuffs.textContent = '';
+  rows.forEach(([, txt, col]) => {
     const d = document.createElement('div');
     d.innerHTML = '<span class="buffs-color" style="background:' + col + '"></span>' + txt;
     hudBuffs.append(d);
@@ -2503,9 +2555,8 @@ function drawCostumePreview(canvas, costumeId) {
 // ===== 结算 =====
 function finish() {
   run = 0;
-  document.querySelector('#final').textContent = score;
-  document.querySelector('#runCoins').textContent = '+' + runCoins;
-  document.querySelector('#endCoins').textContent = shopState.coins;
+  finalEl.textContent = score;
+  runCoinsEl.textContent = '+' + runCoins;
   const c = cfg();
   const prevGlobal = progress.global;
   const prevLv = bestOfLevel(level);
@@ -2514,7 +2565,8 @@ function finish() {
   if (isNewGlobal) progress.global = score;
   if (isNewLv) progress.byLevel[level] = score;
   saveProgress();
-  updateBest();
+  // 本局金币一次性入账（避免收集时高频写 localStorage）
+  bankPendingCoins();
   // 累计统计
   shopState.stats = {
     runs: shopState.stats.runs + 1,
@@ -2522,6 +2574,8 @@ function finish() {
     totalCoins: shopState.stats.totalCoins + runCoins
   };
   saveShopState();
+  updateBest();
+  updateCoinUI();
   // 追加历史
   history.unshift({
     t: Date.now(), lv: level, lvName: c.title, side,
@@ -2533,15 +2587,15 @@ function finish() {
   if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
   saveHistory();
   // UI
-  document.querySelector('#newBest').style.display = isNewGlobal ? '' : 'none';
-  document.querySelector('#newLvBest').style.display = (isNewLv && !isNewGlobal) ? '' : 'none';
-  document.querySelector('#prevBest').textContent = prevLv;
-  document.querySelector('#endDeath').innerHTML = '关卡：' + c.icon + ' ' + c.title + '　方向：' + (side === 1 ? '左→右' : '右→左') + '　' + deathText(lastDeath);
+  newBestEl.style.display = isNewGlobal ? '' : 'none';
+  newLvBestEl.style.display = (isNewLv && !isNewGlobal) ? '' : 'none';
+  prevBestEl.textContent = prevLv;
+  endDeathEl.innerHTML = '关卡：' + c.icon + ' ' + c.title + '　方向：' + (side === 1 ? '左→右' : '右→左') + '　' + deathText(lastDeath);
   const used = itemsUsed.length ? '　道具：' + itemsUsed.map(i => ACTIVE_ITEM_MAP.get(i).name).join('、') : '';
   const pk = pickupsGot ? '　拾取道具 ×' + pickupsGot : '';
-  document.querySelector('#runDetail').innerHTML =
+  runDetailEl.innerHTML =
     '存活 ' + Math.floor(gameT / 60) + 's · 最高连击 ' + comboMax + used + pk;
-  document.querySelector('#endTitle').textContent =
+  endTitleEl.textContent =
     lastDeath === 'dog' ? '被狗咬住了！' :
     lastDeath === 'laser' ? '被激光扫中！' :
     comboMax >= 12 ? '连击之王！' : comboMax >= 6 ? '身手不错！' : '撞上了';
@@ -2555,6 +2609,8 @@ menu();
 window.menu = menu;
 window.restart = restart;
 window.finish = finish;
+// 兜底：直接关窗/刷新前把本局金币入账，避免丢失
+addEventListener('beforeunload', bankPendingCoins);
 })();
 </script>
 </html>
