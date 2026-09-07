@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>霓虹跑酷</title>
+<style>
+body{margin:0;overflow:hidden;background:#08051b;color:#fff;font-family:Arial,'Microsoft Yahei';-webkit-user-select:none;user-select:none;touch-action:manipulation}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+.hud{position:fixed;z-index:2;inset:0;padding:18px 3.5vw;display:flex;justify-content:space-between;pointer-events:none;font-weight:bold}
+.hud>div{text-shadow:0 0 12px #000a}
+.hud b{color:#52f5ff;font-size:22px}
+.hud .cbox{min-height:22px;font-size:17px;color:#ffd94a}
+.hud .best{font-size:12px;color:#8fa3ff;font-weight:normal}
+.btn{pointer-events:auto;background:#211449cc;color:#fff;border:1px solid #52f5ff;padding:8px 12px;cursor:pointer;font-size:13px}
+.layer{position:fixed;z-index:4;inset:0;display:grid;place-items:center;background:#060313eF}
+.off{display:none}
+.box{background:#100a2b;border:1px solid #52f5ff;padding:22px 30px;text-align:center;min-width:300px;box-shadow:0 0 46px #3b2a86}
+.box h1{color:#52f5ff;margin:4px 0 10px}
+.box p{margin:6px 0}
+.box small{color:#9d93c8;line-height:1.8;display:block}
+.box button{margin:6px;padding:10px 16px;background:#28135a;color:#fff;border:1px solid #846cff;cursor:pointer;font-size:14px}
+.box button:hover:not(:disabled){background:#3c1f7e}
+.locked{opacity:.35;cursor:not-allowed!important}
+.star{color:#ffd94a}
+.row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:6px 0}
+.dim{color:#9d93c8;font-size:13px;margin-top:10px}
+kbd{background:#28135a;border:1px solid #846cff;border-radius:3px;padding:0 5px;color:#fff}
+</style>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div>NEON RUN<br><small>关卡：<b id="lv">1</b></small><div class="best">纪录 <b id="best">0</b></div></div>
+  <div style="text-align:right">
+    <div>速度 <b id="sp">1.0x</b>　分数 <b id="sc">0</b></div>
+    <div class="cbox" id="comboBox"></div>
+    <button id="pause" class="btn">Ⅱ 暂停</button>
+  </div>
+</div>
+<div id="menu" class="layer">
+  <div class="box">
+    <h1>霓虹跑酷</h1>
+    <p id="info">第一关 · 悠闲节奏</p>
+    <div class="row">
+      <button data-l="1">第一关<br><small>最高 2x</small></button>
+      <button data-l="2">第二关<br><small>1万分解锁 · 最高 6x</small></button>
+      <button data-l="3">第三关<br><small>2.5万分解锁 · 最高 15x</small></button>
+    </div>
+    <p class="dim">选择角色方向</p>
+    <div class="row">
+      <button data-s="1">为何意<br><small>左 → 右</small></button>
+      <button data-s="-1">邱家杨<br><small>右 → 左</small></button>
+    </div>
+    <small><span class="star">●</span> 吃能量球得分，连续吃触发连击倍率</small>
+    <small><span style="color:#ff8c42">▲</span> <b style="color:#ff8c42">疯狗</b>从身后追你！它扑来时要<span style="color:#ff8c42">跳起来躲</span>，落地会被咬住</small>
+    <small><kbd>空格</kbd><kbd>↑</kbd><kbd>W</kbd> / 点击屏幕 跳跃 · 空中可<span style="color:#ffd94a">二段跳</span> · 长按跳更高</small>
+    <small><kbd>P</kbd> 暂停 · <kbd>R</kbd> 快速重开</small>
+  </div>
+</div>
+<div id="pauseLayer" class="layer off">
+  <div class="box">
+    <h1>已暂停</h1>
+    <div class="row">
+      <button id="resumeBtn">继续</button>
+      <button id="restartBtn">重新开始</button>
+      <button id="quitBtn">返回选关</button>
+    </div>
+  </div>
+</div>
+<div id="end" class="layer off">
+  <div class="box">
+    <h1 id="endTitle">撞上了</h1>
+    <p>本次得分 <b id="final" style="color:#52f5ff;font-size:28px">0</b></p>
+    <p id="newBest" class="star" style="display:none;font-weight:bold">★ 新纪录！★</p>
+    <p id="prevBestP" class="dim">纪录 <b id="prevBest" style="color:#8fa3ff">0</b></p>
+    <div class="row">
+      <button onclick="restart()"><kbd>R</kbd> 再来一局</button>
+      <button onclick="menu()">返回选关</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+const c = document.querySelector('#c');
+const x = c.getContext('2d');
+const menuEl = document.querySelector('#menu');
+const end = document.querySelector('#end');
+const pauseLayer = document.querySelector('#pauseLayer');
+const lvEl = document.querySelector('#lv');
+const spEl = document.querySelector('#sp');
+const scEl = document.querySelector('#sc');
+const bestEl = document.querySelector('#best');
+const comboBox = document.querySelector('#comboBox');
+
+// ===== 常量 / 状态 =====
+const LEVEL_UNLOCK = [0, 0, 10000, 25000];
+// 封顶速度(基础6) 第3关90(15x)而非120：高速下仍需可反应时间(屏宽0.77W/90≈0.13s@1000px)
+const MAX_SPEED = [0, 12, 36, 90];
+// 物理（帧单位 16ms）。手感经模拟调校：
+//   轻点单跳≈210px / 长按≈250px / 二段(顶点附近)≈338px / 二段+长按≈398px
+const G = 0.7, JV1 = 17.5, JV2 = 14.5;
+const HOLD_G_MUL = 0.72, HOLD_CAP = 10;   // 长按重力系数 / 长按增益帧上限
+const GEM_OFF = [12, 85, 175];           // 贴地 / 低 / 高 能量球离地高度(px)
+const GEM_VAL = [20, 40, 60];
+const GY_RATIO = 0.78;
+// 狗追击参数（帧单位16ms）
+const DOG_CHASE = 250;          // 平时狗在玩家身后距离px（差一点追上）
+const DOG_MIN_CHASE = 210;      // 追击中允许贴近的最小距离（制造压迫感）
+const DOG_WINDUP = 34;          // 扑咬预警时长(帧≈0.55s)
+const DOG_BITE_H = 48;          // 玩家脚离地<此高度且狗到位置 => 被咬
+const DOG_CD_MIN = [0, 420, 340, 260];  // 两次扑咬最小间隔(帧)，随关卡缩短
+let W, H, run = 0, paused = 0, side = 1, level = 1;
+let score = 0, best = 0, speed, wait, obs = [], gems = [], parts = [], floats = [], ghost = [];
+let py = 0, pvy = 0, jumpCount = 0, holdJump = 0;
+let combo = 0, comboMax = 0, last, gameT = 0, flash = 0, dying = 0, dieT = 0;
+// 狗状态
+let dog = null;
+
+function loadBest() { try { best = +(localStorage.getItem('neon_best') || 0); } catch (e) { best = 0; } }
+function saveBest() { try { localStorage.setItem('neon_best', best); } catch (e) {} }
+loadBest();
+
+function size() {
+  W = innerWidth; H = innerHeight;
+  c.width = W * devicePixelRatio;
+  c.height = H * devicePixelRatio;
+  x.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+}
+size(); addEventListener('resize', size);
+
+function px() { return side === 1 ? W * 0.23 : W * 0.77; }
+function gy() { return H * GY_RATIO; }
+
+// ===== 输入 =====
+addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+    e.preventDefault();
+    if (e.repeat) return;
+    jumpStart();
+  } else if (e.code === 'KeyP' || e.code === 'Escape') {
+    if (run) togglePause();
+  } else if (e.code === 'KeyR') {
+    if (!menuEl.classList.contains('off')) return;   // 菜单里不响应
+    restart();
+  }
+});
+addEventListener('keyup', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') jumpEnd();
+});
+addEventListener('pointerdown', e => {
+  if (run && !paused) jumpStart();
+});
+
+// ===== 跳跃 =====
+let jumpHoldFrames = 0;   // 长按帧数上限，防止无限飘
+function jumpStart() {
+  if (!run || paused) return;
+  if (jumpCount < 2) {
+    jumpCount++;
+    holdJump = 1;
+    jumpHoldFrames = 0;
+    pvy = jumpCount === 1 ? JV1 : JV2;
+    const col = jumpCount === 1 ? '#52f5ff' : '#ffd94a';
+    spawnBurst(px(), gy() - 8, col, 10, 2.6);
+    if (jumpCount === 2) spawnRing(px(), gy() - 8, '#ffd94a');
+  }
+}
+function jumpEnd() { holdJump = 0; }
+
+// ===== 粒子 =====
+function spawnBurst(xx, yy, color, n, sp) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, s = sp * (0.4 + Math.random() * 0.9);
+    parts.push({ xx, yy, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 1, life: 1, color, r: 1.5 + Math.random() * 2 });
+  }
+}
+function spawnRing(xx, yy, color) { parts.push({ xx, yy, ring: 1, life: 0.42, color }); }
+function addFloat(xx, yy, txt, color, life) { floats.push({ xx, yy, txt, color, life }); }
+
+// ===== 界面切换 =====
+function menu() {
+  run = 0; paused = 0;
+  end.classList.add('off'); pauseLayer.classList.add('off');
+  menuEl.classList.remove('off');
+  bestEl.textContent = best;
+  renderLevels();
+  renderMenuInfo();
+}
+function togglePause() {
+  if (!run) return;
+  paused = !paused;
+  pauseLayer.classList.toggle('off', !paused);
+  if (!paused) { last = performance.now(); requestAnimationFrame(loop); }
+}
+function restart() {
+  if (paused) { paused = 0; pauseLayer.classList.add('off'); }
+  start();
+}
+function renderLevels() {
+  document.querySelectorAll('[data-l]').forEach(q => {
+    const n = +q.dataset.l, ok = n === 1 || best >= LEVEL_UNLOCK[n];
+    q.classList.toggle('locked', !ok);
+    q.disabled = !ok;
+  });
+}
+function renderMenuInfo() {
+  document.querySelector('#info').textContent =
+    level === 1 ? '第一关 · 悠闲节奏' :
+    level === 2 ? '第二关 · 更密更快' :
+                  '第三关 · 极速挑战';
+}
+function start() {
+  menuEl.classList.add('off'); end.classList.add('off');
+  run = 1; paused = 0;
+  score = 0; speed = 6; wait = 48; obs = []; gems = []; parts = []; floats = []; ghost = [];
+  py = 0; pvy = 0; jumpCount = 0; holdJump = 0; combo = 0; comboMax = 0;
+  gameT = 0; flash = 0; dying = 0; dieT = 0;
+  // 狗：从身后追来；首扑延迟(关卡越高越快登场)
+  lastDeath = '';
+  dog = {
+    mode: 'chase',        // chase跟随 / windup预警 / lunge扑咬 / recover回位
+    dist: DOG_CHASE + 60, // 距玩家px(奔跑方向后方)
+    cd: 380 + level * 30, // 首次扑咬倒计时（先让玩家熟悉障碍节奏）
+    wt: 0, lungeV: 0, ret: 0, anim: 0, pant: 0
+  };
+  lvEl.textContent = level;
+  last = performance.now();
+  spEl.textContent = '1.0x'; scEl.textContent = '0'; comboBox.textContent = '';
+  requestAnimationFrame(loop);
+}
+
+document.querySelector('#pause').onclick = togglePause;
+document.querySelector('#resumeBtn').onclick = togglePause;
+document.querySelector('#restartBtn').onclick = restart;
+document.querySelector('#quitBtn').onclick = () => { togglePause(); menu(); };
+document.querySelectorAll('[data-l]').forEach(b => b.onclick = () => { level = +b.dataset.l; renderMenuInfo(); });
+document.querySelectorAll('[data-s]').forEach(b => b.onclick = () => {
+  if (level > 1 && best < LEVEL_UNLOCK[level]) return;
+  side = +b.dataset.s;
+  start();
+});
+
+// ===== 生成 =====
+function makeObstacle() {
+  const wide = level >= 2 && Math.random() < 0.1 + Math.min(0.15, gameT / 6000);
+  const w = wide ? 44 : 25;
+  // 柱高分档（配合跳跃峰值：轻点210 / 长按250 / 二段338）：
+  //   低柱 45~70 轻点过；中柱 90~130 需长按或良好时机；
+  //   高柱 160~210 必须二段跳（轻点临界/长按不足）
+  const r = Math.random();
+  // 开局约25秒内只出低/中柱，让玩家先适应节奏
+  const early = gameT < 1500;
+  // 高速时(speed>24)高柱不可反应(到达<25帧≈0.4s)，禁出高柱保证公平
+  const fast = speed > 24;
+  // 低柱45~70轻点稳过 / 中柱90~110轻点过 / 高柱170~210需二段(仅中低速出现)
+  const h = r < (early ? 0.6 : 0.42) ? 45 + Math.random() * 25
+        : r < (early ? 1 : fast ? 1 : 0.76) ? 90 + Math.random() * 20
+        : 170 + Math.random() * 40;
+  return { x: side === 1 ? W + 50 : -50, w, h, px: 0, wide };
+}
+function spawnWave() {
+  // 每波柱子：基础间隔按关卡，随时间与速度渐密，但保底够落地再跳。
+  const lvlBase = [0, 80, 70, 58][level];
+  const wave = Math.floor(gameT / 1800);           // 每约30秒一档
+  const gap = Math.max(45, lvlBase - wave * 2.2 - (speed - 6) * 0.15);
+  let made = 1;
+  const first = makeObstacle();
+  obs.push(first);
+  // 双柱仅第二关(速度封顶36可控)：第二根与第一根相距约100帧到达间隔(落地+缓冲)
+  if (level === 2 && wave >= 2 && Math.random() < 0.2 + Math.min(0.3, wave * 0.02)) {
+    const second = makeObstacle();
+    if (first.h > 150 && second.h > 150) second.h = 90 + Math.random() * 20;
+    second.x = first.x + side * speed * 100;
+    obs.push(second);
+    made = 2;
+  }
+  // 若这波有双柱，冷却必须大于双柱到达间隔(100帧)+缓冲，避免波与波挤在一起
+  wait = (gap + (made === 2 ? 130 : 0)) * (0.85 + Math.random() * 0.4);
+}
+function maybeSpawnGems() {
+  if (gems.length < 3 && Math.random() < 0.025) {
+    const r = Math.random();
+    const type = r < 0.35 ? 0 : r < 0.75 ? 1 : 2;   // 贴地/低/高
+    gems.push({ x: side === 1 ? W + 50 : -50, px: 0, type });
+  }
+}
+
+// ===== 狗（身后追猎者）=====
+let lastDeath = '';   // '' | 'pillar' | 'dog'
+function dogX() { return px() - side * dog.dist; }   // 狗嘴位置x（dist=到玩家的距离）
+function nextDogCd() {
+  // 间隔随存活时间缩短，制造逐步加压
+  const base = DOG_CD_MIN[level];
+  const boost = Math.floor(gameT / 3600);            // 每60秒再减
+  const cd = Math.max(180, base - boost * 60) * (0.75 + Math.random() * 0.5);
+  return cd;
+}
+function updateDog(dt) {
+  if (dying) return;   // 已死（撞柱/被咬），狗定格
+  dog.anim += dt * 0.06 * (0.6 + speed / 24);
+  if (dog.mode === 'chase') {
+    // 长期压迫：随存活时间，狗从远处逐渐逼到贴近(60秒内从CHASE压到MIN_CHASE)
+    const press = Math.min(1, gameT / 60000);
+    const range = (DOG_CHASE - DOG_MIN_CHASE);
+    const base = DOG_CHASE - range * press;
+    dog.dist = base + range * 0.18 * Math.sin(dog.anim * 0.9);   // 小幅呼吸感
+    dog.cd -= dt;
+    if (dog.cd <= 0) {
+      dog.mode = 'windup'; dog.wt = DOG_WINDUP;
+      addFloat(px() - side * 70, gy() - 150, '❗', '#ff7b2e', 0.9);
+      spawnRing(px() - side * 70, gy() - 20, '#ff7b2e');
+    }
+  } else if (dog.mode === 'windup') {
+    dog.wt -= dt;
+    if (dog.wt <= 0) {
+      dog.mode = 'lunge';
+      dog.lungeV = speed * 1.9 + 14;   // 猛扑速度
+    }
+  } else if (dog.mode === 'lunge') {
+    dog.dist -= dog.lungeV * dt;
+    if (dog.dist <= 0) {
+      // 扑到玩家位置：脚离地够高则扑空，否则咬到
+      if (py >= DOG_BITE_H) {
+        dog.mode = 'recover';
+        dog.ret = dog.lungeV * 0.8;    // 冲过头滑行
+        addFloat(px(), gy() - py - 90, '好险！', '#ffd94a', 1);
+      } else {
+        lastDeath = 'dog';
+        flash = 1;
+        spawnBurst(px(), gy() - py - 20, '#ff7b2e', 26, 4.5);
+        spawnRing(px(), gy() - py - 20, '#ff7b2e');
+        combo = 0; comboBox.textContent = '';
+        dying = 1; dieT = 0;
+      }
+    }
+  } else if (dog.mode === 'recover') {
+    // 冲过头后减速，随后转身跑回身后位置
+    dog.dist -= dog.ret * dt;
+    dog.ret *= Math.pow(0.9, dt);
+    if (dog.ret < 1) {
+      const press = Math.min(1, gameT / 60000);
+      const range = (DOG_CHASE - DOG_MIN_CHASE);
+      const back = DOG_CHASE - range * press;
+      dog.dist += (back + 30 - dog.dist) * 0.06 * dt;   // 平滑归位到当前压迫基线
+      if (Math.abs(back + 30 - dog.dist) < 12) {
+        dog.mode = 'chase';
+        dog.cd = nextDogCd();
+      }
+    }
+  }
+}
+function drawDog() {
+  if (!dog) return;
+  const g = gy();
+  const dir = side;                       // 面向奔跑方向（追玩家）
+  const mx = dogX();                      // 嘴/鼻 x
+  const crouch = dog.mode === 'windup' ? 0.62 : 1;
+  const leap = dog.mode === 'lunge' ? 1 : 0;   // 扑咬时身体前扑拉直
+  const mouth = (dog.mode === 'lunge' || dog.mode === 'windup') ? 1 : 0;
+  const c = '#ff8c42';
+  x.strokeStyle = c; x.lineWidth = 4; x.lineJoin = 'round'; x.lineCap = 'round';
+  const bodyTop = g - 30 * crouch - 4;
+  const tailX = mx - dir * 40;
+  // 尾巴（跑动摆动 / 预警夹起）
+  const tailUp = dog.mode === 'windup' ? -4 : 6 + Math.sin(dog.anim * 2) * 4;
+  x.beginPath();
+  x.moveTo(tailX, bodyTop);
+  x.lineTo(tailX - dir * 6, bodyTop + tailUp - (dog.mode === 'windup' ? 6 : 0));
+  x.stroke();
+  // 背线（尾→颈）
+  x.beginPath();
+  x.moveTo(tailX, bodyTop);
+  x.lineTo(mx - dir * 16, bodyTop - 4 * leap);
+  x.stroke();
+  // 头 + 耳
+  const hx = mx - dir * 8, hy = bodyTop - 5 * leap;
+  x.beginPath(); x.arc(hx, hy, 8, 0, 7); x.stroke();
+  x.beginPath(); x.moveTo(hx - dir * 3, hy - 5); x.lineTo(hx + dir * 2, hy - 13); x.lineTo(hx + dir * 6, hy - 5); x.stroke();
+  // 吻部/嘴
+  x.beginPath(); x.moveTo(hx + dir * 7, hy + 2); x.lineTo(mx, hy + (mouth ? 6 : 2));
+  if (mouth) { x.moveTo(mx, hy + 6); x.lineTo(hx + dir * 2, hy + (dog.mode === 'windup' ? 8 : 12)); }
+  x.stroke();
+  // 腿（四腿奔跑摆动；windup 蹲伏；lunge 前后蹬）
+  const legs = [
+    { fx: mx - dir * 2, ph: 0 }, { fx: mx - dir * 8, ph: 2.4 },
+    { fx: tailX + dir * 6, ph: 1.3 }, { fx: tailX - dir * 2, ph: 3.8 }
+  ];
+  const swing = dog.mode === 'lunge' ? 0.6 : dog.mode === 'windup' ? 0.15 : 1;
+  for (const lg of legs) {
+    const ph = lg.ph + dog.anim * 2;
+    const lift = Math.sin(ph) * 6 * swing;
+    const kneeY = bodyTop + 10;
+    x.beginPath();
+    x.moveTo(lg.fx, bodyTop + 6);
+    x.lineTo(lg.fx + lift * 0.4, kneeY);
+    x.lineTo(lg.fx + Math.sin(ph) * 9 * swing, g);
+    x.stroke();
+  }
+  // 眼睛
+  x.fillStyle = '#fff';
+  x.beginPath(); x.arc(hx + dir * 4, hy - 2, 1.6, 0, 7); x.fill();
+}
+// ===== 主循环 =====
+function loop(t) {
+  if (!run || paused) return;
+  let dt = Math.min((t - last) / 16, 1.6);
+  last = t;
+  gameT += dt;
+  const pxs = px(), ground = gy();
+
+  // 跑速推进（关卡封顶）
+  score += Math.floor(speed * dt / 2);
+  speed = Math.min(MAX_SPEED[level], speed + 0.012 * dt);
+
+  // 跳跃物理（py 为离地高度，向上为正）
+  if (pvy > 0 || py > 0) {
+    // 长按低重力仅生效约 HOLD_CAP 帧，之后恢复标准重力（防无限飘）
+    if (holdJump) jumpHoldFrames++;
+    if (jumpHoldFrames > HOLD_CAP) holdJump = 0;
+    pvy -= (holdJump ? G * HOLD_G_MUL : G) * dt;
+    py += pvy * dt;
+    if (py <= 0) {
+      py = 0; pvy = 0; jumpCount = 0; holdJump = 0; jumpHoldFrames = 0;
+      spawnBurst(pxs, ground, '#4aa8ff', 6, 2.2);
+    }
+  }
+
+  // 障碍
+  wait -= dt;
+  if (wait <= 0) spawnWave();
+  maybeSpawnGems();
+  obs.forEach(o => { o.px = o.x; o.x -= side * speed * dt; });
+  obs = obs.filter(o => side === 1 ? o.x > -80 : o.x < W + 80);
+
+  // 碰撞（扫掠防穿透；脚低于柱顶即撞）——撞上先红闪 4 帧再结算
+  let hit = false;
+  if (!dying) {
+    for (const o of obs) {
+      const lo = Math.min(o.x, o.px), hi = Math.max(o.x, o.px) + o.w;
+      if (hi > pxs - 16 && lo < pxs + 24 && py < o.h - 6) { hit = true; break; }
+    }
+  }
+  if (hit && !dying) {
+    lastDeath = 'pillar';
+    dying = 1; dieT = 0;
+    flash = 1;
+    spawnBurst(pxs, ground - py - 24, '#ff315f', 22, 4);
+    spawnRing(pxs, ground - py - 24, '#ff315f');
+    combo = 0; comboBox.textContent = '';
+  }
+
+  // 狗追击（若被咬到会在内部置 dying；dying 期间狗停在原地）
+  updateDog(dt);
+
+  if (dying) {
+    dieT += dt;
+    if (dieT > 4) { finish(); return; }
+  }
+
+  // 能量球：移动 + 收集
+  gems.forEach(g => { g.px = g.x; g.x -= side * speed * dt; });
+  gems = gems.filter(g => side === 1 ? g.x > -80 : g.x < W + 80);
+  for (let i = gems.length - 1; i >= 0; i--) {
+    const g = gems[i];
+    const gyy = ground - GEM_OFF[g.type];
+    const foot = ground - py;
+    if (g.x > pxs - 26 && g.x < pxs + 26 && Math.abs(foot - gyy) < 42) {
+      collectGem(g, pxs, foot, gyy);
+      gems.splice(i, 1);
+    }
+  }
+
+  // ===== 渲染 =====
+  if (flash > 0) { x.fillStyle = '#ff315f'; x.globalAlpha = flash * 0.25; x.fillRect(0, 0, W, H); x.globalAlpha = 1; flash -= 0.04; }
+  else { x.fillStyle = '#090622'; x.fillRect(0, 0, W, H); }
+
+  // 地面
+  x.strokeStyle = '#322568'; x.lineWidth = 1;
+  x.beginPath(); x.moveTo(0, ground); x.lineTo(W, ground); x.stroke();
+  x.strokeStyle = '#191043';
+  for (let i = 1; i < 9; i++) {
+    const yy = ground + i * i * 3.4;
+    x.beginPath(); x.moveTo(0, yy); x.lineTo(W, yy); x.stroke();
+  }
+
+  // 能量球（脉动光晕）
+  for (const g of gems) {
+    const gyy = ground - GEM_OFF[g.type];
+    const pulse = 1 + 0.14 * Math.sin(t * 0.02 + g.x * 0.05);
+    const col = g.type === 0 ? '#4fe3ff' : g.type === 1 ? '#ffd94a' : '#ff6ad5';
+    x.fillStyle = col;
+    x.globalAlpha = 0.3;
+    x.beginPath(); x.arc(g.x, gyy, 13 * pulse, 0, 7); x.fill();
+    x.globalAlpha = 1;
+    x.beginPath(); x.arc(g.x, gyy, 6.5 * pulse, 0, 7); x.fill();
+    x.fillStyle = '#fff'; x.globalAlpha = 0.85;
+    x.beginPath(); x.arc(g.x - 2, gyy - 2, 2, 0, 7); x.fill();
+    x.globalAlpha = 1;
+  }
+
+  // 障碍
+  for (const o of obs) {
+    const grad = x.createLinearGradient(0, ground - o.h, 0, ground);
+    grad.addColorStop(0, o.wide ? '#ff5d7e' : '#ff315f');
+    grad.addColorStop(1, '#7c0e2c');
+    x.fillStyle = grad;
+    x.fillRect(o.x, ground - o.h, o.w, o.h);
+    x.fillStyle = '#ffa9b8';
+    x.fillRect(o.x, ground - o.h, o.w, 2.5);
+    // 危险条纹
+    x.fillStyle = '#ff5d7e';
+    for (let sy = ground - 14; sy < ground - 2; sy += 7) x.fillRect(o.x, sy, o.w, 2);
+  }
+
+  // 玩家残影 + 主体
+  if (py > 30) {
+    ghost.push({ xx: pxs, yy: ground - py, life: 0.5 });
+    if (ghost.length > 8) ghost.shift();
+  }
+  ghost = ghost.filter(g2 => (g2.life -= 0.055) > 0);
+  for (const g2 of ghost) {
+    x.globalAlpha = g2.life * 0.35;
+    x.strokeStyle = side === 1 ? '#52f5ff' : '#ff3cae';
+    x.lineWidth = 4;
+    x.beginPath(); x.arc(g2.xx, g2.yy - 68, 11, 0, 7); x.stroke();
+  }
+  x.globalAlpha = 1;
+  drawRunner(pxs, ground - py);
+  drawDog();   // 身后追逐的狗
+
+  // 粒子
+  parts = parts.filter(pp => (pp.life -= 0.035) > 0);
+  for (const pp of parts) {
+    if (pp.ring) {
+      x.strokeStyle = pp.color; x.globalAlpha = pp.life;
+      x.lineWidth = 3;
+      x.beginPath(); x.arc(pp.xx, pp.yy, (1 - pp.life) * 70, 0, 7); x.stroke();
+    } else {
+      pp.xx += pp.vx * 0.55; pp.yy += pp.vy * 0.55; pp.vy += 0.14;
+      x.globalAlpha = Math.max(0, pp.life);
+      x.fillStyle = pp.color;
+      x.beginPath(); x.arc(pp.xx, pp.yy, pp.r, 0, 7); x.fill();
+    }
+    x.globalAlpha = 1;
+  }
+
+  // 浮字
+  floats = floats.filter(f => (f.life -= 0.018) > 0);
+  for (const f of floats) {
+    f.yy -= 0.45;
+    x.globalAlpha = Math.max(0, Math.min(1, f.life));
+    x.fillStyle = f.color;
+    x.font = 'bold 16px Arial';
+    x.textAlign = 'center';
+    x.fillText(f.txt, f.xx, f.yy);
+  }
+  x.globalAlpha = 1;
+
+  // HUD
+  scEl.textContent = score;
+  spEl.textContent = (speed / 6).toFixed(1) + 'x';
+  comboBox.innerHTML = combo >= 2 ? '连击 <b style="color:#ffd94a">' + combo + '</b>' + (combo >= 5 ? ' · 倍率 ×' + (1 + Math.floor(combo / 5)) : '') : '';
+  requestAnimationFrame(loop);
+}
+
+function collectGem(g, pxs, foot, gyy) {
+  combo++;
+  if (combo > comboMax) comboMax = combo;
+  const mult = 1 + Math.floor(combo / 5);
+  const gain = GEM_VAL[g.type] * mult;
+  score += gain;
+  const col = g.type === 0 ? '#4fe3ff' : g.type === 1 ? '#ffd94a' : '#ff6ad5';
+  spawnBurst(pxs, gyy, col, 12, 3.2);
+  addFloat(pxs, gyy - 16, '+' + gain + (mult > 1 ? ' ×' + mult : ''), col, 1);
+  if (combo >= 5 && combo % 5 === 0) {
+    addFloat(pxs, gyy - 40, '连击 ×' + mult + ' !', '#ffd94a', 1.2);
+    spawnRing(pxs, gyy, '#ffd94a');
+  }
+}
+
+function drawRunner(xx, yy) {
+  const col = side === 1 ? '#52f5ff' : '#ff3cae';
+  x.strokeStyle = col; x.lineWidth = 5; x.lineJoin = 'round'; x.lineCap = 'round';
+  x.beginPath();
+  x.arc(xx, yy - 68, 11, 0, 7);
+  x.moveTo(xx, yy - 55); x.lineTo(xx, yy - 20);
+  x.moveTo(xx, yy - 40); x.lineTo(xx - 18, yy - 25);
+  x.moveTo(xx, yy - 40); x.lineTo(xx + 18, yy - 30);
+  x.moveTo(xx, yy - 20); x.lineTo(xx - 16, yy + 7);
+  x.moveTo(xx, yy - 20); x.lineTo(xx + 16, yy + 7);
+  x.stroke();
+}
+
+// ===== 结算 =====
+function finish() {
+  run = 0;
+  document.querySelector('#final').textContent = score;
+  const prev = best, isNew = score > prev;
+  if (isNew) { best = score; saveBest(); }
+  document.querySelector('#newBest').style.display = isNew ? '' : 'none';
+  document.querySelector('#prevBest').textContent = prev;
+  document.querySelector('#endTitle').textContent =
+    lastDeath === 'dog' ? '被狗咬住了！' :
+    comboMax >= 12 ? '连击之王！' : comboMax >= 6 ? '身手不错！' : '撞上了';
+  bestEl.textContent = best;
+  end.classList.remove('off');
+}
+
+menu();
+
+// HTML 内联按钮(onclick=...)需要全局可见
+window.menu = menu;
+window.restart = restart;
+window.finish = finish;
+})();
+</script>
+</html>

@@ -1,0 +1,65 @@
+{
+  "name": "neon-run-pc",
+  "productName": "霓虹跑酷",
+  "version": "1.0.0",
+  "description": "霓虹跑酷 - PC 版桌面游戏",
+  "main": "main.js",
+  "author": "NeonRun",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable",
+    "dist:mac": "electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.neonrun.pc",
+    "productName": "霓虹跑酷",
+    "files": [
+      "main.js",
+      "app/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "category": "public.app-category.games",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "NeonRun-${version}-${arch}.${ext}"
+    },
+    "dmg": {
+      "artifactName": "NeonRun-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "霓虹跑酷-${version}-portable.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^26.0.0"
+  }
+}
