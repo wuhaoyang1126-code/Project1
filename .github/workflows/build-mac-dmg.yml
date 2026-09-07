@@ -21,7 +21,7 @@ jobs:
 
       # 按 package.json 的 mac.target 构建：dmg + zip, arm64 + x64
       - name: Build macOS packages
-        run: npx electron-builder --mac
+        run: npx electron-builder --mac --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
